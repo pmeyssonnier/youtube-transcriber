@@ -112,7 +112,203 @@ function updateSubmitState() {
     else button.textContent = state.inspection ? "Confirmer et démarrer" : "Analyser la vidéo";
 }
 
+// ---- Plage à transcrire + aperçu vidéo ----
+function parseClock(text) {
+    const value = String(text || "").trim();
+    if (!value) return null;
+    if (!/^\d+(:\d{1,2}){0,2}$/.test(value)) return NaN;
+    const parts = value.split(":").map(Number);
+    if (parts.length > 1 && parts.slice(1).some((part) => part > 59)) return NaN;
+    return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+const preview = { player: null, apiPromise: null, videoId: null };
+
+function currentRange() {
+    const duration = state.inspection ? state.inspection.duration : null;
+    const start = parseClock(document.querySelector("#rangeStart").value);
+    const end = parseClock(document.querySelector("#rangeEnd").value);
+    return { start, end, duration };
+}
+
+function rangeProblem({ start, end, duration }) {
+    if (Number.isNaN(start) || Number.isNaN(end)) return "Format attendu : hh:mm:ss (ou mm:ss).";
+    if (duration && start !== null && start >= duration) return "Le début doit être avant la fin de la vidéo.";
+    if (duration === null && end !== null) return "Durée inconnue : indiquez seulement un début.";
+    if (start !== null && end !== null && end - start < 5) return "La plage doit durer au moins 5 secondes.";
+    return null;
+}
+
+function effectiveSeconds({ start, end, duration }) {
+    if (!duration) return null;
+    const stop = end !== null && end < duration - 1 ? end : duration;
+    return Math.max(0, stop - (start || 0));
+}
+
+function updateRangeSummary() {
+    const summary = document.querySelector("#rangeSummary");
+    const range = currentRange();
+    const problem = rangeProblem(range);
+    summary.className = problem ? "range-summary error" : "range-summary";
+    if (problem) {
+        summary.textContent = problem;
+    } else {
+        const seconds = effectiveSeconds(range);
+        if (seconds === null || !range.duration || seconds >= range.duration - 1) {
+            summary.textContent = range.duration ? "Toute la vidéo sera transcrite." : "";
+        } else {
+            const saved = Math.round((1 - seconds / range.duration) * 100);
+            summary.textContent = `Durée transcrite : ${formatReadableDuration(seconds)} (${saved} % d’audio en moins).`;
+        }
+    }
+    const confirmBox = document.querySelector("#longConfirmation");
+    if (state.inspection && state.inspection.duration) {
+        const seconds = effectiveSeconds(range);
+        const needsConfirmation = seconds === null || seconds >= 2 * 60 * 60;
+        confirmBox.classList.toggle("hidden", !needsConfirmation);
+        state.needsConfirmation = needsConfirmation;
+    }
+}
+
+function syncSlidersFromFields() {
+    const duration = state.inspection && state.inspection.duration ? Math.floor(state.inspection.duration) : 0;
+    const start = parseClock(document.querySelector("#rangeStart").value);
+    const end = parseClock(document.querySelector("#rangeEnd").value);
+    const sliderStart = document.querySelector("#sliderStart");
+    const sliderEnd = document.querySelector("#sliderEnd");
+    sliderStart.value = Number.isFinite(start) ? Math.min(start, duration) : 0;
+    sliderEnd.value = Number.isFinite(end) ? Math.min(end, duration) : duration;
+    document.querySelector("#sliderStartOut").textContent = formatDuration(sliderStart.value);
+    document.querySelector("#sliderEndOut").textContent = formatDuration(sliderEnd.value);
+}
+
+function setRangeField(which, seconds) {
+    const duration = state.inspection && state.inspection.duration ? Math.floor(state.inspection.duration) : null;
+    const field = document.querySelector(which === "start" ? "#rangeStart" : "#rangeEnd");
+    const rounded = Math.max(0, Math.floor(seconds));
+    if (which === "start" && rounded === 0) field.value = "";
+    else if (which === "end" && duration !== null && rounded >= duration) field.value = "";
+    else field.value = formatDuration(rounded);
+    syncSlidersFromFields();
+    updateRangeSummary();
+}
+
+function loadYouTubeApi() {
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    if (preview.apiPromise) return preview.apiPromise;
+    preview.apiPromise = new Promise((resolve, reject) => {
+        window.onYouTubeIframeAPIReady = () => resolve();
+        const script = document.createElement("script");
+        script.src = "https://www.youtube.com/iframe_api";
+        script.onerror = () => {
+            preview.apiPromise = null;
+            reject(new Error("Impossible de charger le lecteur YouTube (connexion ou blocage réseau)."));
+        };
+        document.head.appendChild(script);
+    });
+    return preview.apiPromise;
+}
+
+async function openPreview() {
+    const note = document.querySelector("#previewNote");
+    const panel = document.querySelector("#previewPanel");
+    if (!state.inspection) return;
+    panel.classList.remove("hidden");
+    const duration = state.inspection.duration ? Math.floor(state.inspection.duration) : 0;
+    for (const id of ["#sliderStart", "#sliderEnd"]) document.querySelector(id).max = duration;
+    syncSlidersFromFields();
+    try {
+        await loadYouTubeApi();
+    } catch (error) {
+        note.textContent = error.message;
+        return;
+    }
+    if (preview.player && preview.videoId === state.inspection.video_id) return;
+    if (preview.player) preview.player.destroy();
+    preview.videoId = state.inspection.video_id;
+    note.textContent = "Lecteur YouTube prêt. Si la vidéo refuse la lecture intégrée, saisissez les heures à la main.";
+    preview.player = new window.YT.Player("ytPlayer", {
+        host: "https://www.youtube-nocookie.com",
+        videoId: preview.videoId,
+        playerVars: { rel: 0, playsinline: 1, origin: window.location.origin },
+        events: {
+            onError: () => {
+                note.textContent = "Cette vidéo ne peut pas être lue ici (lecture intégrée refusée). Saisissez les heures à la main.";
+            },
+        },
+    });
+}
+
+function closePreview() {
+    document.querySelector("#previewPanel").classList.add("hidden");
+    if (preview.player) {
+        preview.player.destroy();
+        preview.player = null;
+        preview.videoId = null;
+    }
+}
+
+function withPlayer(action) {
+    if (preview.player && typeof preview.player.getCurrentTime === "function") action(preview.player);
+}
+
+function setupRangeControls() {
+    document.querySelector("#togglePreview").addEventListener("click", () => {
+        const panel = document.querySelector("#previewPanel");
+        if (panel.classList.contains("hidden")) openPreview();
+        else closePreview();
+    });
+    for (const id of ["#rangeStart", "#rangeEnd"]) {
+        document.querySelector(id).addEventListener("input", () => {
+            syncSlidersFromFields();
+            updateRangeSummary();
+        });
+    }
+    document.querySelector("#sliderStart").addEventListener("input", (event) => {
+        const end = document.querySelector("#sliderEnd");
+        if (Number(event.target.value) > Number(end.value) - 5) event.target.value = Math.max(0, Number(end.value) - 5);
+        setRangeField("start", Number(event.target.value));
+    });
+    document.querySelector("#sliderEnd").addEventListener("input", (event) => {
+        const start = document.querySelector("#sliderStart");
+        if (Number(event.target.value) < Number(start.value) + 5) event.target.value = Number(start.value) + 5;
+        setRangeField("end", Number(event.target.value));
+    });
+    document.querySelector("#sliderStart").addEventListener("change", (event) => {
+        withPlayer((player) => player.seekTo(Number(event.target.value), true));
+    });
+    document.querySelector("#sliderEnd").addEventListener("change", (event) => {
+        withPlayer((player) => player.seekTo(Math.max(0, Number(event.target.value) - 10), true));
+    });
+    document.querySelector("#setStartHere").addEventListener("click", () => {
+        withPlayer((player) => setRangeField("start", player.getCurrentTime()));
+    });
+    document.querySelector("#setEndHere").addEventListener("click", () => {
+        withPlayer((player) => setRangeField("end", player.getCurrentTime()));
+    });
+    document.querySelector("#playFromStart").addEventListener("click", () => {
+        const start = parseClock(document.querySelector("#rangeStart").value);
+        withPlayer((player) => {
+            player.seekTo(Number.isFinite(start) && start ? start : 0, true);
+            player.playVideo();
+        });
+    });
+    document.querySelector("#playBeforeEnd").addEventListener("click", () => {
+        const end = parseClock(document.querySelector("#rangeEnd").value);
+        const duration = state.inspection && state.inspection.duration ? state.inspection.duration : 0;
+        withPlayer((player) => {
+            player.seekTo(Math.max(0, (Number.isFinite(end) && end ? end : duration) - 10), true);
+            player.playVideo();
+        });
+    });
+}
+
 function resetInspection() {
+    closePreview();
+    document.querySelector("#rangeStart").value = "";
+    document.querySelector("#rangeEnd").value = "";
+    document.querySelector("#rangeSummary").textContent = "";
+    state.needsConfirmation = false;
     state.inspection = null;
     document.querySelector("#inspectionCard").classList.add("hidden");
     document.querySelector("#confirmLong").checked = false;
@@ -128,7 +324,10 @@ function renderInspection(data) {
         : "Nombre de parties inconnu";
     document.querySelector("#inspectionPricing").textContent = data.pricing_note;
     document.querySelector("#longConfirmation").classList.toggle("hidden", !data.requires_confirmation);
+    state.needsConfirmation = data.requires_confirmation;
     document.querySelector("#inspectionCard").classList.remove("hidden");
+    syncSlidersFromFields();
+    updateRangeSummary();
     updateSubmitState();
 }
 
@@ -395,7 +594,10 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
             return;
         }
 
-        if (state.inspection.requires_confirmation && !document.querySelector("#confirmLong").checked) {
+        const range = currentRange();
+        const problem = rangeProblem(range);
+        if (problem) throw new Error(problem);
+        if (state.needsConfirmation && !document.querySelector("#confirmLong").checked) {
             throw new Error("Cochez la confirmation pour cette vidéo longue ou de durée inconnue.");
         }
         message.textContent = "Ajout à la file d’attente…";
@@ -409,6 +611,8 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
                 chunk_minutes: chunkMinutes,
                 api_concurrency: Number(document.querySelector("#apiConcurrency").value),
                 cookie_browser: cookieBrowser,
+                start_seconds: range.start,
+                end_seconds: range.end,
             }),
         });
         document.querySelector("#videoUrl").value = "";
@@ -469,6 +673,7 @@ document.querySelector("#updateYtdlp").addEventListener("click", async (event) =
     }
 });
 
+setupRangeControls();
 document.querySelector("#suggestNames").addEventListener("click", suggestNames);
 document.querySelector("#hideMinor").addEventListener("change", applyMinorFilter);
 document.querySelector("#closeDetails").addEventListener("click", closeSpeakerDetails);

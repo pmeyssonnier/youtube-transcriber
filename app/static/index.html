@@ -112,6 +112,36 @@
                             <span id="inspectionChunks"></span>
                         </div>
                         <p id="inspectionPricing"></p>
+
+                        <fieldset class="range-box" id="rangeBox">
+                            <legend>Plage à transcrire (facultatif)</legend>
+                            <p class="hint">Retirer une intro ou une fin inutile réduit le coût et la durée. Laissez vide pour transcrire toute la vidéo.</p>
+                            <div class="range-fields">
+                                <label for="rangeStart">Début
+                                    <input id="rangeStart" type="text" inputmode="numeric" placeholder="00:00:00" autocomplete="off">
+                                </label>
+                                <label for="rangeEnd">Fin
+                                    <input id="rangeEnd" type="text" inputmode="numeric" placeholder="fin de la vidéo" autocomplete="off">
+                                </label>
+                                <button type="button" class="button secondary" id="togglePreview">Aperçu vidéo et curseurs</button>
+                            </div>
+                            <p class="range-summary" id="rangeSummary"></p>
+
+                            <div class="preview hidden" id="previewPanel">
+                                <div class="player-frame"><div id="ytPlayer"></div></div>
+                                <p class="hint" id="previewNote">Le lecteur est chargé depuis YouTube uniquement lorsque vous ouvrez l’aperçu.</p>
+                                <label class="slider-label" for="sliderStart">Curseur de début <output id="sliderStartOut">00:00:00</output></label>
+                                <input id="sliderStart" type="range" min="0" max="0" step="1" value="0">
+                                <label class="slider-label" for="sliderEnd">Curseur de fin <output id="sliderEndOut">00:00:00</output></label>
+                                <input id="sliderEnd" type="range" min="0" max="0" step="1" value="0">
+                                <div class="preview-buttons">
+                                    <button type="button" class="button secondary" id="setStartHere">Début = position actuelle</button>
+                                    <button type="button" class="button secondary" id="setEndHere">Fin = position actuelle</button>
+                                    <button type="button" class="button secondary" id="playFromStart">Écouter depuis le début</button>
+                                    <button type="button" class="button secondary" id="playBeforeEnd">Écouter la fin (10 s avant)</button>
+                                </div>
+                            </div>
+                        </fieldset>
                         <label class="long-confirmation hidden" id="longConfirmation">
                             <input id="confirmLong" type="checkbox">
                             <span>Je confirme le lancement de cette vidéo longue ou de durée inconnue et les frais API associés.</span>

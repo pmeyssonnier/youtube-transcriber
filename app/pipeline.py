@@ -182,7 +182,11 @@ class TranscriptionPipeline:
         chunk_minutes = int(job.get("chunk_minutes", 10))
         if diarize:
             chunk_minutes = min(chunk_minutes, DIARIZATION_MAX_CHUNK_MINUTES)
-        chunks = self._split_audio(audio_path, chunks_dir, results_dir, chunk_minutes * 60)
+        range_start = job.get("start_seconds")
+        range_end = job.get("end_seconds")
+        chunks = self._split_audio(
+            audio_path, chunks_dir, results_dir, chunk_minutes * 60, range_start, range_end
+        )
         if not chunks:
             raise PipelineError("FFmpeg n'a créé aucune partie audio.")
 
@@ -222,7 +226,7 @@ class TranscriptionPipeline:
 
         chunk_durations = [self._duration(chunk) for chunk in chunks]
         offsets: list[float] = []
-        running_offset = 0.0
+        running_offset = float(range_start or 0.0)
         for chunk_duration in chunk_durations:
             offsets.append(running_offset)
             running_offset += chunk_duration
@@ -294,7 +298,7 @@ class TranscriptionPipeline:
             if checkpoint is None:
                 raise PipelineError(f"Le résultat sauvegardé de la partie {index + 1} est manquant.")
             segments.extend(checkpoint["segments"])
-        offset = sum(chunk_durations)
+        offset = float(range_start or 0.0) + sum(chunk_durations)
 
         speakers = sorted({segment["speaker"] for segment in segments})
         speaker_names = {speaker: speaker for speaker in speakers}
@@ -311,6 +315,8 @@ class TranscriptionPipeline:
             "title": title,
             "source_url": job["url"],
             "duration_seconds": duration or offset,
+            "transcribed_from": range_start,
+            "transcribed_to": range_end,
             "model": model,
             "speaker_labels_need_review": diarize,
         }
@@ -425,13 +431,22 @@ class TranscriptionPipeline:
         chunks_dir: Path,
         results_dir: Path,
         seconds: int,
+        start: float | None = None,
+        end: float | None = None,
     ) -> list[Path]:
         source_duration = self._duration(audio_path)
         fingerprint = {
             "source_size": audio_path.stat().st_size,
             "source_duration": round(source_duration, 3),
             "chunk_seconds": seconds,
+            "start_seconds": start,
+            "end_seconds": end,
         }
+        range_args: list[str] = []
+        if start:
+            range_args += ["-ss", f"{float(start):.3f}"]
+        if end:
+            range_args += ["-t", f"{float(end) - float(start or 0.0):.3f}"]
         manifest_path = chunks_dir / "manifest.json"
         manifest = self._read_json(manifest_path)
         if manifest and all(manifest.get(key) == value for key, value in fingerprint.items()):
@@ -455,6 +470,7 @@ class TranscriptionPipeline:
                 "-loglevel",
                 "error",
                 "-y",
+                *range_args,
                 "-i",
                 str(audio_path),
                 "-map",

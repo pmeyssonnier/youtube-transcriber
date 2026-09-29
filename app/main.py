@@ -30,6 +30,7 @@ from .exporters import clean_inline_text, safe_filename_stem, write_exports
 from .pipeline import PipelineError, TranscriptionPipeline
 from .store import DuplicateJobError, JobStore
 from .ytdlp import YtDlpUpdateError, update_ytdlp, ytdlp_version
+from .timerange import effective_duration, validate_time_range
 from .speakers import SuggestionError, naming_contexts, request_name_suggestions, speaker_stats
 from .youtube import validate_cookie_browser, validate_youtube_url, youtube_video_identity
 
@@ -54,6 +55,8 @@ class JobRequest(BaseModel):
     chunk_minutes: int = Field(default=10, ge=5, le=30)
     api_concurrency: int = Field(default=4, ge=1, le=6)
     cookie_browser: str | None = Field(default=None, max_length=20)
+    start_seconds: float | None = Field(default=None, ge=0, le=172800)
+    end_seconds: float | None = Field(default=None, ge=0, le=172800)
 
 
 class ApiKeyRequest(BaseModel):
@@ -91,6 +94,8 @@ def job_summary(job: dict) -> dict:
         "diarize",
         "chunk_minutes",
         "api_concurrency",
+        "start_seconds",
+        "end_seconds",
         "duration",
         "created_at",
         "updated_at",
@@ -120,6 +125,8 @@ def _output_files(job: dict, speaker_names: dict[str, str]) -> list[dict[str, st
         "title": job.get("title"),
         "source_url": job.get("url"),
         "duration_seconds": job.get("duration"),
+        "transcribed_from": job.get("start_seconds"),
+        "transcribed_to": job.get("end_seconds"),
         "model": DIARIZATION_MODEL if job.get("diarize") else STANDARD_MODEL,
         "speaker_labels_need_review": bool(job.get("diarize")),
     }
@@ -155,12 +162,13 @@ async def local_security(request: Request, call_next):
 
     response = await call_next(request)
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+        "default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https://i.ytimg.com; connect-src 'self'; "
+        "frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; "
         "base-uri 'none'; form-action 'self'"
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-Frame-Options"] = "DENY"
     return response
 
@@ -233,6 +241,7 @@ def inspect_video(request: InspectionRequest) -> dict:
 
     return {
         "inspection_id": inspection_id,
+        "video_id": metadata["video_identity"],
         "title": metadata["title"],
         "uploader": metadata.get("uploader"),
         "duration": duration,
@@ -268,7 +277,15 @@ def create_job(request: JobRequest) -> dict:
         or inspection["chunk_minutes"] != request.chunk_minutes
     ):
         raise HTTPException(status_code=409, detail="Le lien ou les options ont changé. Analysez à nouveau la vidéo.")
-    if inspection["requires_confirmation"] and not request.confirm_long_video:
+    try:
+        start_seconds, end_seconds = validate_time_range(
+            request.start_seconds, request.end_seconds, inspection.get("duration")
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    transcribed = effective_duration(start_seconds, end_seconds, inspection.get("duration"))
+    requires_confirmation = transcribed is None or transcribed >= LONG_VIDEO_SECONDS
+    if requires_confirmation and not request.confirm_long_video:
         raise HTTPException(status_code=409, detail="Confirmez le traitement de cette vidéo longue ou de durée inconnue.")
 
     job_id = uuid.uuid4().hex
@@ -285,6 +302,8 @@ def create_job(request: JobRequest) -> dict:
         "chunk_minutes": request.chunk_minutes,
         "api_concurrency": request.api_concurrency,
         "cookie_browser": cookie_browser,
+        "start_seconds": start_seconds,
+        "end_seconds": end_seconds,
         "segments": [],
         "speaker_names": {},
         "files": [],
