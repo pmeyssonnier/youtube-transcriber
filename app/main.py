@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -29,6 +30,7 @@ from .exporters import clean_inline_text, safe_filename_stem, write_exports
 from .pipeline import PipelineError, TranscriptionPipeline
 from .store import DuplicateJobError, JobStore
 from .ytdlp import YtDlpUpdateError, update_ytdlp, ytdlp_version
+from .speakers import SuggestionError, naming_contexts, request_name_suggestions, speaker_stats
 from .youtube import validate_cookie_browser, validate_youtube_url, youtube_video_identity
 
 
@@ -336,6 +338,43 @@ def delete_job(job_id: str) -> dict:
         raise HTTPException(status_code=409, detail="Attendez la fin du traitement avant de le supprimer.")
     store.delete(job_id)
     return {"deleted": True}
+
+
+@app.get("/api/jobs/{job_id}/speakers")
+def list_speakers(job_id: str) -> dict:
+    job = store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Traitement introuvable.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
+    return {
+        "title": job.get("title"),
+        "diarize": bool(job.get("diarize")),
+        "speakers": speaker_stats(job.get("segments", []), job.get("speaker_names", {})),
+    }
+
+
+@app.post("/api/jobs/{job_id}/speakers/suggest")
+def suggest_speaker_names(job_id: str) -> dict:
+    job = store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Traitement introuvable.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
+    api_key = get_openai_api_key()
+    if not api_key:
+        raise HTTPException(status_code=409, detail="Configurez d'abord votre clé API OpenAI.")
+
+    contexts, skipped = naming_contexts(job.get("segments", []))
+    if not contexts:
+        raise HTTPException(status_code=409, detail="Pas assez de paroles pour proposer des noms.")
+    try:
+        suggestions = request_name_suggestions(OpenAI(api_key=api_key, max_retries=3, timeout=120), contexts)
+    except SuggestionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except OpenAIError as exc:
+        raise HTTPException(status_code=502, detail=f"L'analyse a échoué : {exc}") from exc
+    return {"suggestions": suggestions, "analyzed_labels": len(contexts), "skipped_labels": skipped}
 
 
 @app.post("/api/jobs/{job_id}/speakers")

@@ -2,9 +2,9 @@
 
 Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
 
-**Version : 1.2.0**
+**Version : 1.3.0**
 
-> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.2.0 (Windows, Python 3.11+).
+> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.3.0 (Windows, Python 3.11+).
 
 ## Ce qui est local — et ce qui ne l’est pas
 
@@ -32,6 +32,8 @@ Ce n’est donc pas une transcription entièrement hors ligne. N’utilisez l’
 - permet de reprendre un traitement en erreur, supprimer un traitement terminé et télécharger le M4A ;
 - exporte en JSON, Markdown, TXT, SRT et VTT avec des noms dérivés du titre ;
 - conserve la saisie des noms d’intervenants pendant l’actualisation de la liste ;
+- classe les intervenants par part de parole avec un extrait et l’heure de première intervention, fusionne les identifiants qui reçoivent le même nom ;
+- propose des noms d’intervenants par IA (bouton facultatif) : seuls de courts extraits de texte sont envoyés, chaque suggestion est justifiée par une citation et doit être validée avant enregistrement ;
 - empêche deux instances et deux traitements actifs pour la même vidéo.
 
 L’interface écoute uniquement sur `http://127.0.0.1:8765`. Fermer l’onglet ne coupe pas le travail ; fermer la fenêtre noire de l’application l’interrompt. Au redémarrage, les étapes et parties déjà sauvegardées sont réutilisées.
@@ -43,7 +45,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.2.0)`.
+4. Attendez `Installation terminee (version 1.3.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -191,6 +193,7 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 
 ## Historique
 
+- **1.3.0** : vérification des intervenants enrichie (part du texte, première intervention, extrait, tri, fusion par nom, masquage des voix secondaires) et suggestion de noms par IA à valider ;
 - **1.2.0** : bouton « Mettre à jour yt-dlp » dans l'interface ;
 - **1.1.1** : parties limitées à 20 min avec la diarisation, relance immédiate d'un traitement en erreur, réponse allégée du renommage des intervenants ;
 - **1.1.0** : appels parallèles, points de reprise par partie, analyse et confirmation avant lancement, URL vidéo stricte, sécurité locale renforcée, interface légère, reprise/suppression, cookies facultatifs, noms de téléchargement, instance unique et installateur amélioré ;

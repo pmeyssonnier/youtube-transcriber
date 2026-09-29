@@ -224,3 +224,16 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 
 .ytdlp-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .ytdlp-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+
+.speaker-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 0.75rem 0 0.25rem; }
+.speaker-filter { display: flex; align-items: center; gap: 0.5rem; color: var(--muted, #9db0c8); font-size: 0.9rem; }
+.speaker-list { display: flex; flex-direction: column; gap: 0.5rem; margin: 1rem 0; }
+.speaker-row { display: grid; grid-template-columns: minmax(150px, 210px) 1fr minmax(180px, 240px); gap: 0.75rem; align-items: center; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 12px; background: #091526; }
+.speaker-row.minor.is-hidden { display: none; }
+.speaker-row code { display: block; color: var(--accent); font-size: 0.85rem; }
+.speaker-meta { color: #9db0c8; font-size: 0.78rem; }
+.speaker-sample { font-size: 0.85rem; line-height: 1.35; }
+.speaker-badge { display: inline-block; margin-top: 0.25rem; padding: 0.05rem 0.45rem; border-radius: 999px; background: rgba(56, 214, 178, 0.15); color: var(--accent); font-size: 0.72rem; }
+.speaker-badge.moyenne { background: rgba(255, 200, 87, 0.15); color: #ffc857; }
+.speaker-badge.faible { background: rgba(255, 124, 130, 0.15); color: var(--danger); }
+@media (max-width: 760px) { .speaker-row { grid-template-columns: 1fr; } }

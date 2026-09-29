@@ -143,9 +143,14 @@
                 </div>
                 <button class="text-button" id="closeDetails" type="button">Fermer</button>
             </div>
-            <p>Les identifiants sont propres à chaque partie audio. Remplacez-les par un nom lorsqu’il est identifiable, puis régénérez les fichiers.</p>
+            <p>Les identifiants sont propres à chaque partie audio : une même personne apparaît sous plusieurs identifiants. Les voix les plus présentes sont en haut. Donnez le même nom à plusieurs identifiants pour les fusionner, puis enregistrez pour régénérer les fichiers.</p>
+            <div class="speaker-tools">
+                <button class="button secondary" id="suggestNames" type="button">Suggérer des noms (IA)</button>
+                <label class="speaker-filter"><input type="checkbox" id="hideMinor"> Masquer les voix secondaires (moins de 1 % du texte)</label>
+            </div>
+            <p class="form-message" id="suggestMessage" aria-live="polite"></p>
             <form id="speakersForm">
-                <div id="speakerFields" class="speaker-fields"></div>
+                <div id="speakerFields" class="speaker-list"></div>
                 <button class="button secondary" type="submit">Enregistrer les noms</button>
                 <p class="form-message" id="speakerMessage" aria-live="polite"></p>
             </form>

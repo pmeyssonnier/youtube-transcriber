@@ -238,24 +238,85 @@ function renderJobs() {
     updateLiveCounters();
 }
 
+function formatClock(seconds) {
+    return formatDuration(seconds);
+}
+
+function renderSpeakerRows(speakers) {
+    const fields = document.querySelector("#speakerFields");
+    fields.innerHTML = speakers.map((speaker, index) => {
+        const percent = (speaker.share * 100).toFixed(speaker.share >= 0.1 ? 0 : 1);
+        const minor = speaker.share < 0.01;
+        return `
+            <div class="speaker-row${minor ? " minor" : ""}" data-label="${escapeHtml(speaker.label)}">
+                <div>
+                    <code>${index + 1}. ${escapeHtml(speaker.label)}</code>
+                    <div class="speaker-meta">${percent} % du texte · ${speaker.segments} phrases · dès ${formatClock(speaker.first_start)}</div>
+                </div>
+                <div class="speaker-sample">${speaker.sample ? `« ${escapeHtml(speaker.sample)} »` : ""}</div>
+                <div>
+                    <input type="text" name="${escapeHtml(speaker.label)}" value="${escapeHtml(speaker.name)}" maxlength="100" aria-label="Nom pour ${escapeHtml(speaker.label)}">
+                    <span class="speaker-badge-slot"></span>
+                </div>
+            </div>`;
+    }).join("");
+    applyMinorFilter();
+}
+
+function applyMinorFilter() {
+    const hide = document.querySelector("#hideMinor").checked;
+    document.querySelectorAll(".speaker-row.minor").forEach((row) => row.classList.toggle("is-hidden", hide));
+}
+
 async function openSpeakerDetails(jobId) {
     try {
-        const job = await api(`/api/jobs/${jobId}`);
-        if (job.status !== "completed") return;
-        state.selectedJobId = job.id;
+        const data = await api(`/api/jobs/${jobId}/speakers`);
+        state.selectedJobId = jobId;
         const card = document.querySelector("#detailsCard");
-        const fields = document.querySelector("#speakerFields");
-        document.querySelector("#detailsTitle").textContent = job.title || "Intervenants";
-        fields.innerHTML = Object.entries(job.speaker_names || {}).map(([raw, name]) => `
-            <label class="speaker-field">
-                <code>${escapeHtml(raw)}</code>
-                <input type="text" name="${escapeHtml(raw)}" value="${escapeHtml(name)}" maxlength="100">
-            </label>
-        `).join("");
+        document.querySelector("#detailsTitle").textContent = data.title || "Intervenants";
+        document.querySelector("#suggestMessage").textContent = "";
+        document.querySelector("#speakerMessage").textContent = "";
+        renderSpeakerRows(data.speakers);
         card.classList.remove("hidden");
         card.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
         window.alert(error.message);
+    }
+}
+
+async function suggestNames() {
+    const jobId = state.selectedJobId;
+    if (!jobId) return;
+    if (!window.confirm(
+        "Des extraits courts de la transcription (texte uniquement, pas l'audio) vont être envoyés à OpenAI "
+        + "pour proposer des noms. Cela consomme un peu de crédit API. Continuer ?"
+    )) return;
+    const button = document.querySelector("#suggestNames");
+    const message = document.querySelector("#suggestMessage");
+    button.disabled = true;
+    message.className = "form-message";
+    message.textContent = "Analyse en cours… cela peut prendre une minute.";
+    try {
+        const result = await api(`/api/jobs/${jobId}/speakers/suggest`, { method: "POST" });
+        let applied = 0;
+        for (const suggestion of result.suggestions) {
+            const row = [...document.querySelectorAll(".speaker-row")].find((item) => item.dataset.label === suggestion.label);
+            if (!row) continue;
+            const input = row.querySelector("input");
+            if (input.value !== suggestion.label) continue; // ne jamais écraser un nom déjà saisi
+            input.value = suggestion.name;
+            const slot = row.querySelector(".speaker-badge-slot");
+            slot.innerHTML = `<span class="speaker-badge ${escapeHtml(suggestion.confidence)}" title="${escapeHtml(suggestion.evidence)}">Suggestion ${escapeHtml(suggestion.confidence)} · ${escapeHtml(suggestion.evidence)}</span>`;
+            applied += 1;
+        }
+        message.textContent = `${applied} suggestion(s) proposée(s) sur ${result.analyzed_labels} voix analysées`
+            + (result.skipped_labels ? ` (${result.skipped_labels} voix très courtes ignorées)` : "")
+            + ". Ce sont des hypothèses : vérifiez-les, puis cliquez sur « Enregistrer les noms ».";
+    } catch (error) {
+        message.className = "form-message error";
+        message.textContent = error.message;
+    } finally {
+        button.disabled = false;
     }
 }
 
@@ -408,6 +469,8 @@ document.querySelector("#updateYtdlp").addEventListener("click", async (event) =
     }
 });
 
+document.querySelector("#suggestNames").addEventListener("click", suggestNames);
+document.querySelector("#hideMinor").addEventListener("change", applyMinorFilter);
 document.querySelector("#closeDetails").addEventListener("click", closeSpeakerDetails);
 document.querySelector("#refreshJobs").addEventListener("click", loadJobs);
 
