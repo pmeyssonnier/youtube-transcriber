@@ -14,38 +14,13 @@
             <p class="eyebrow">OUTIL LOCAL</p>
             <h1>Transcripteur vidéo</h1>
         </div>
-        <div class="health" id="health" aria-live="polite">Vérification…</div>
+        <div class="topbar-actions">
+            <div class="health" id="health" aria-live="polite">Vérification…</div>
+            <button type="button" class="button secondary settings-button" id="openSettings" aria-haspopup="dialog">⚙ Paramètres</button>
+        </div>
     </header>
 
     <main>
-        <section class="settings card" id="settingsCard">
-            <div>
-                <p class="section-kicker">Configuration</p>
-                <h2>Clé API OpenAI</h2>
-                <p>La clé est envoyée uniquement au serveur local de votre ordinateur et n’est jamais affichée après enregistrement.</p>
-            </div>
-            <form id="keyForm" class="key-form">
-                <label for="apiKey">Clé API</label>
-                <div class="inline-field">
-                    <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="sk-…" required>
-                    <button type="submit" class="button secondary">Enregistrer</button>
-                </div>
-                <p class="form-message" id="keyMessage" aria-live="polite"></p>
-            </form>
-        </section>
-
-        <section class="card ytdlp-card" id="ytdlpCard">
-            <div>
-                <p class="section-kicker">Maintenance</p>
-                <h2>Mise à jour de yt-dlp</h2>
-                <p>YouTube change souvent : si un téléchargement échoue, mettez yt-dlp à jour. Version installée : <strong id="ytdlpVersion">…</strong></p>
-            </div>
-            <div class="ytdlp-actions">
-                <button type="button" class="button secondary" id="updateYtdlp">Mettre à jour yt-dlp</button>
-                <p class="form-message" id="ytdlpMessage" aria-live="polite"></p>
-            </div>
-        </section>
-
         <section class="workspace">
             <section class="card new-job">
                 <p class="section-kicker">Nouvelle transcription</p>
@@ -186,6 +161,40 @@
             </form>
         </section>
     </main>
+
+    <dialog class="settings-dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+        <div class="dialog-header">
+            <h2 id="settingsTitle">Paramètres</h2>
+            <button type="button" class="text-button" id="closeSettings">Fermer</button>
+        </div>
+        <section class="settings-section" id="settingsCard">
+            <div>
+                <p class="section-kicker">Configuration</p>
+                <h2>Clé API OpenAI</h2>
+                <p>La clé est envoyée uniquement au serveur local de votre ordinateur et n’est jamais affichée après enregistrement.</p>
+            </div>
+            <form id="keyForm" class="key-form">
+                <label for="apiKey">Clé API</label>
+                <div class="inline-field">
+                    <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="sk-…" required>
+                    <button type="submit" class="button secondary">Enregistrer</button>
+                </div>
+                <p class="form-message" id="keyMessage" aria-live="polite"></p>
+            </form>
+        </section>
+
+        <section class="settings-section ytdlp-card" id="ytdlpCard">
+            <div>
+                <p class="section-kicker">Maintenance</p>
+                <h2>Mise à jour de yt-dlp</h2>
+                <p>YouTube change souvent : si un téléchargement échoue, mettez yt-dlp à jour. Version installée : <strong id="ytdlpVersion">…</strong></p>
+            </div>
+            <div class="ytdlp-actions">
+                <button type="button" class="button secondary" id="updateYtdlp">Mettre à jour yt-dlp</button>
+                <p class="form-message" id="ytdlpMessage" aria-live="polite"></p>
+            </div>
+        </section>
+    </dialog>
 
     <template id="emptyTemplate">
         <div class="empty-state">

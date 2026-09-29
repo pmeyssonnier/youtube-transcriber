@@ -15,7 +15,7 @@ class ApiSecurityTests(unittest.TestCase):
         client = TestClient(app, base_url="http://localhost")
         response = client.get("/api/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.4.0")
+        self.assertEqual(response.json()["version"], "1.5.0")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("Analyser la vidéo", client.get("/").text)
@@ -55,6 +55,15 @@ class ApiSecurityTests(unittest.TestCase):
                 store.update(job_id, status="completed")
                 response = client.post(f"/api/jobs/{job_id}/retry")
                 self.assertEqual(response.status_code, 409)
+
+    def test_settings_live_in_a_dialog_not_on_the_main_screen(self) -> None:
+        html = TestClient(app, base_url="http://localhost").get("/").text
+        dialog = html[html.index('<dialog class="settings-dialog"'):html.index("</dialog>")]
+        main = html[html.index("<main>"):html.index("</main>")]
+        for element_id in ('id="keyForm"', 'id="updateYtdlp"', 'id="ytdlpVersion"'):
+            self.assertIn(element_id, dialog)
+            self.assertNotIn(element_id, main)
+        self.assertIn('id="openSettings"', html)
 
 
 if __name__ == "__main__":

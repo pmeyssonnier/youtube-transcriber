@@ -331,6 +331,33 @@ function renderInspection(data) {
     updateSubmitState();
 }
 
+// ---- Fenêtre des paramètres ----
+let settingsAutoOpened = false;
+
+function openSettings() {
+    const dialog = document.querySelector("#settingsDialog");
+    if (!dialog.open) dialog.showModal();
+}
+
+function openSettingsOnce() {
+    if (settingsAutoOpened) return;
+    settingsAutoOpened = true;
+    openSettings();
+}
+
+function setupSettingsDialog() {
+    const dialog = document.querySelector("#settingsDialog");
+    document.querySelector("#openSettings").addEventListener("click", openSettings);
+    document.querySelector("#closeSettings").addEventListener("click", () => dialog.close());
+    // Un clic sur le fond assombri (en dehors du contenu) ferme la fenêtre.
+    dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+    document.querySelector("#health").addEventListener("click", () => {
+        if (document.querySelector("#health").textContent.includes("Clé API")) openSettings();
+    });
+}
+
 async function loadHealth() {
     const health = document.querySelector("#health");
     try {
@@ -342,6 +369,7 @@ async function loadHealth() {
         } else if (!data.api_key_configured) {
             health.textContent = "Clé API à configurer";
             health.className = "health";
+            openSettingsOnce();
         } else {
             health.textContent = `Prêt · v${data.version}`;
             health.className = "health ok";
@@ -674,6 +702,7 @@ document.querySelector("#updateYtdlp").addEventListener("click", async (event) =
 });
 
 setupRangeControls();
+setupSettingsDialog();
 document.querySelector("#suggestNames").addEventListener("click", suggestNames);
 document.querySelector("#hideMinor").addEventListener("change", applyMinorFilter);
 document.querySelector("#closeDetails").addEventListener("click", closeSpeakerDetails);
