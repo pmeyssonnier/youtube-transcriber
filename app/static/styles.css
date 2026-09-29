@@ -221,3 +221,6 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
     .job-status-line { align-items: flex-start; flex-direction: column; gap: 0.25rem; }
     .job-times { justify-items: start; }
 }
+
+.ytdlp-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.ytdlp-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }

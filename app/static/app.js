@@ -154,6 +154,15 @@ async function loadHealth() {
     }
 }
 
+async function loadYtdlpVersion() {
+    try {
+        const data = await api("/api/yt-dlp");
+        document.querySelector("#ytdlpVersion").textContent = data.version || "non installé";
+    } catch (error) {
+        document.querySelector("#ytdlpVersion").textContent = "inconnue";
+    }
+}
+
 async function loadJobs() {
     try {
         state.jobs = await api("/api/jobs");
@@ -379,11 +388,31 @@ document.querySelector("#speakersForm").addEventListener("submit", async (event)
     }
 });
 
+document.querySelector("#updateYtdlp").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const message = document.querySelector("#ytdlpMessage");
+    button.disabled = true;
+    message.className = "form-message";
+    message.textContent = "Mise à jour en cours… cela peut prendre une minute.";
+    try {
+        const result = await api("/api/yt-dlp/update", { method: "POST" });
+        message.textContent = result.updated
+            ? `yt-dlp mis à jour : ${result.previous_version || "?"} → ${result.version}.`
+            : `yt-dlp est déjà à jour (${result.version}).`;
+        await loadYtdlpVersion();
+    } catch (error) {
+        message.className = "form-message error";
+        message.textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+});
+
 document.querySelector("#closeDetails").addEventListener("click", closeSpeakerDetails);
 document.querySelector("#refreshJobs").addEventListener("click", loadJobs);
 
 async function initialize() {
-    await Promise.all([loadHealth(), loadJobs()]);
+    await Promise.all([loadHealth(), loadJobs(), loadYtdlpVersion()]);
     state.polling = window.setInterval(loadJobs, 3000);
     state.clock = window.setInterval(updateLiveCounters, 1000);
 }

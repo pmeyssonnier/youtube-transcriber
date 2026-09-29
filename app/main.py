@@ -28,6 +28,7 @@ from .constants import (
 from .exporters import clean_inline_text, safe_filename_stem, write_exports
 from .pipeline import PipelineError, TranscriptionPipeline
 from .store import DuplicateJobError, JobStore
+from .ytdlp import YtDlpUpdateError, update_ytdlp, ytdlp_version
 from .youtube import validate_cookie_browser, validate_youtube_url, youtube_video_identity
 
 
@@ -170,8 +171,27 @@ def health() -> dict:
         "version": APP_VERSION,
         "ok": all(dependencies.values()),
         "dependencies": dependencies,
+        "ytdlp_version": ytdlp_version(),
         "api_key_configured": get_openai_api_key() is not None,
     }
+
+
+@app.get("/api/yt-dlp")
+def ytdlp_status() -> dict:
+    return {"version": ytdlp_version()}
+
+
+@app.post("/api/yt-dlp/update")
+def ytdlp_update() -> dict:
+    if store.unfinished():
+        raise HTTPException(
+            status_code=409,
+            detail="Attendez la fin des traitements en cours avant de mettre à jour yt-dlp.",
+        )
+    try:
+        return update_ytdlp()
+    except YtDlpUpdateError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/settings/api-key")

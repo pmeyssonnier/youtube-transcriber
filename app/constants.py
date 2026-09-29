@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 APP_NAME = "youtube-transcriber"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 
 DIARIZATION_MODEL = "gpt-4o-transcribe-diarize"
 STANDARD_MODEL = "whisper-1"
