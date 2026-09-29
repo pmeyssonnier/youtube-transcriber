@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Application locale qui prépare une vidéo YouTube et envoie ses parties audio à l’API OpenAI pour transcription.">
+    <title>Transcripteur vidéo local</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2313213b'/%3E%3Cpath d='M18 18h28v8H18zm0 13h20v6H18zm0 11h28v6H18z' fill='%2338d6b2'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">OUTIL LOCAL</p>
+            <h1>Transcripteur vidéo</h1>
+        </div>
+        <div class="health" id="health" aria-live="polite">Vérification…</div>
+    </header>
+
+    <main>
+        <section class="settings card" id="settingsCard">
+            <div>
+                <p class="section-kicker">Configuration</p>
+                <h2>Clé API OpenAI</h2>
+                <p>La clé est envoyée uniquement au serveur local de votre ordinateur et n’est jamais affichée après enregistrement.</p>
+            </div>
+            <form id="keyForm" class="key-form">
+                <label for="apiKey">Clé API</label>
+                <div class="inline-field">
+                    <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="sk-…" required>
+                    <button type="submit" class="button secondary">Enregistrer</button>
+                </div>
+                <p class="form-message" id="keyMessage" aria-live="polite"></p>
+            </form>
+        </section>
+
+        <section class="workspace">
+            <section class="card new-job">
+                <p class="section-kicker">Nouvelle transcription</p>
+                <h2>Ajouter une vidéo</h2>
+                <form id="jobForm">
+                    <label for="videoUrl">Lien YouTube</label>
+                    <input id="videoUrl" name="videoUrl" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" required>
+
+                    <div class="options-grid">
+                        <label class="option-card">
+                            <input id="diarize" type="checkbox" checked>
+                            <span>
+                                <strong>Distinguer les intervenants</strong>
+                                <small>Les étiquettes pourront être renommées après transcription.</small>
+                            </span>
+                        </label>
+
+                        <label class="select-field" for="chunkMinutes">
+                            <span>Taille des parties</span>
+                            <select id="chunkMinutes">
+                                <option value="10" selected>10 minutes — recommandé</option>
+                                <option value="15">15 minutes</option>
+                                <option value="20">20 minutes</option>
+                                <option value="30">30 minutes</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <details class="advanced-options">
+                        <summary>Options avancées</summary>
+                        <div class="advanced-grid">
+                            <label class="select-field compact" for="apiConcurrency">
+                                <span>Parties simultanées</span>
+                                <select id="apiConcurrency">
+                                    <option value="1">1 — séquentiel</option>
+                                    <option value="2">2</option>
+                                    <option value="4" selected>4 — recommandé</option>
+                                    <option value="6">6 — selon votre limite API</option>
+                                </select>
+                            </label>
+                            <label class="select-field compact" for="cookieBrowser">
+                                <span>Cookies du navigateur</span>
+                                <select id="cookieBrowser">
+                                    <option value="" selected>Aucun — vidéo publique</option>
+                                    <option value="chrome">Google Chrome</option>
+                                    <option value="edge">Microsoft Edge</option>
+                                    <option value="firefox">Mozilla Firefox</option>
+                                    <option value="brave">Brave</option>
+                                </select>
+                            </label>
+                        </div>
+                        <p class="option-help">Les cookies sont lus directement par yt-dlp uniquement si YouTube exige votre connexion. Fermez le navigateur concerné en cas d’erreur d’accès aux cookies.</p>
+                    </details>
+
+                    <div class="notice">
+                        Le téléchargement, le découpage et le stockage sont locaux. Les parties audio sont envoyées à l’API OpenAI pour la transcription, facturée sur votre compte. Le traitement continue si cet onglet est fermé, tant que la fenêtre de l’application reste ouverte.
+                    </div>
+
+                    <section class="inspection hidden" id="inspectionCard" aria-live="polite">
+                        <p class="section-kicker">Analyse préalable</p>
+                        <h3 id="inspectionTitle"></h3>
+                        <div class="inspection-facts">
+                            <span id="inspectionDuration"></span>
+                            <span id="inspectionChunks"></span>
+                        </div>
+                        <p id="inspectionPricing"></p>
+                        <label class="long-confirmation hidden" id="longConfirmation">
+                            <input id="confirmLong" type="checkbox">
+                            <span>Je confirme le lancement de cette vidéo longue ou de durée inconnue et les frais API associés.</span>
+                        </label>
+                    </section>
+
+                    <button type="submit" class="button primary" id="submitJob">Analyser la vidéo</button>
+                    <p class="form-message" id="jobMessage" aria-live="polite"></p>
+                </form>
+            </section>
+
+            <section class="card queue">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Suivi</p>
+                        <h2>Traitements</h2>
+                    </div>
+                    <button class="text-button" id="refreshJobs" type="button">Actualiser</button>
+                </div>
+                <div id="jobs" class="jobs" aria-live="polite"></div>
+            </section>
+        </section>
+
+        <section class="card details hidden" id="detailsCard">
+            <div class="section-heading">
+                <div>
+                    <p class="section-kicker">Vérification</p>
+                    <h2 id="detailsTitle">Intervenants</h2>
+                </div>
+                <button class="text-button" id="closeDetails" type="button">Fermer</button>
+            </div>
+            <p>Les identifiants sont propres à chaque partie audio. Remplacez-les par un nom lorsqu’il est identifiable, puis régénérez les fichiers.</p>
+            <form id="speakersForm">
+                <div id="speakerFields" class="speaker-fields"></div>
+                <button class="button secondary" type="submit">Enregistrer les noms</button>
+                <p class="form-message" id="speakerMessage" aria-live="polite"></p>
+            </form>
+        </section>
+    </main>
+
+    <template id="emptyTemplate">
+        <div class="empty-state">
+            <div class="empty-icon">Aa</div>
+            <p>Aucun traitement pour le moment.</p>
+        </div>
+    </template>
+
+    <script src="/app.js" defer></script>
+</body>
+</html>

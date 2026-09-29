@@ -1,0 +1,9 @@
+# Versions applicatives testées pour la distribution 1.1.1.
+# yt-dlp reste volontairement non verrouillé dans requirements.txt afin de suivre
+# les changements fréquents de YouTube lors de chaque exécution de l'installateur.
+fastapi==0.141.1
+httpx==0.28.1
+openai==2.54.0
+python-dotenv==1.2.3
+python-multipart==0.0.32
+uvicorn==0.54.0
