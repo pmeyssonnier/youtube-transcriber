@@ -4,7 +4,7 @@ Application locale pour télécharger l’audio d’une vidéo YouTube autorisé
 
 **Version : 1.1.1**
 
-> État GitHub : ce projet n’est pas encore publié ni fusionné dans un dépôt GitHub. La distribution actuelle est une archive ZIP autonome.
+> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.1.1 (Windows, Python 3.11+).
 
 ## Ce qui est local — et ce qui ne l’est pas
 
