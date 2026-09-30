@@ -13,6 +13,8 @@ from fastapi.testclient import TestClient
 from app.main import app, store
 from app.people import (
     _mayor_candidates,
+    is_title_like,
+    name_spans,
     analyze_names,
     cue_suggestions,
     load_roster,
@@ -269,6 +271,52 @@ class AliasTests(unittest.TestCase):
         segments = [seg(0, "Voix 01", "Madame Duguid, vous avez la parole."), seg(6, "Voix 02", "Merci.")]
         found = cue_suggestions(segments, date(2026, 6, 1), self.elus, self.extras)
         self.assertEqual(found[0]["name"], "Chloé Deguide")
+
+
+class TitlesAndGroupsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.elus = Path(self.directory.name) / "elus.json"
+        self.extras = Path(self.directory.name) / "extras.json"
+        self.elus.write_text(json.dumps(ELUS), encoding="utf-8")
+        self.extras.write_text("[]", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.directory.cleanup()
+
+    def test_title_like_spellings_are_detected_but_real_surnames_are_not(self) -> None:
+        for spelling in ("Léchine", "Leschvin", "Lechemin", "Leschepin", "Lechfine", "Léchevin", "Lechevin"):
+            self.assertTrue(is_title_like(spelling), spelling)
+        for surname in ("Verzin", "Belkhatir", "Durant", "Clerfayt", "Essaidi", "Vanhalewyn", "Lorenzino", "Koyuncu"):
+            self.assertFalse(is_title_like(surname), surname)
+
+    def test_distorted_titles_are_not_counted_as_unknown_names(self) -> None:
+        segments = [seg(0, "A", "Merci madame Léchine de cette présentation."), seg(5, "B", "Monsieur Leschvin, vous avez la parole.")]
+        result = analyze_names(segments, date(2026, 6, 1), self.elus, self.extras)
+        self.assertEqual(result["stats"]["titres"], 2)
+        self.assertEqual(result["stats"]["inconnues"], 0)
+        self.assertEqual(result["unknown"], [])
+        self.assertEqual(segments[0]["mentions"][0]["level"], "titre")
+        self.assertEqual(segments[0]["mentions"][0]["role"], "échevin(e)")
+        self.assertNotIn("text_normalized", segments[0])
+
+    def test_a_roster_match_wins_over_the_title_rule(self) -> None:
+        segments = [seg(0, "A", "Merci Monsieur Verzin.")]
+        result = analyze_names(segments, date(2026, 6, 1), self.elus, self.extras)
+        self.assertEqual(result["stats"]["titres"], 0)
+        self.assertEqual(segments[0]["mentions"][0]["person"], "Georges Verzin")
+
+    def test_group_names_and_acronyms_are_not_people(self) -> None:
+        text = "Madame Durand pour le groupe ETB, vous avez la parole Madame Durand."
+        names = [raw for _, _, raw, _ in name_spans(text)]
+        self.assertNotIn("ETB", names)
+        self.assertEqual(names.count("Durand"), 2)
+        self.assertEqual([raw for _, _, raw, _ in name_spans("Je représente le groupe Ecolo aujourd'hui, Monsieur Verzin.")], ["Verzin"])
+        self.assertEqual([raw for _, _, raw, _ in name_spans("Madame Durand du PTB, Monsieur Verzin.")], ["Durand", "Verzin"])
+
+    def test_floor_handover_without_a_comma_is_understood(self) -> None:
+        spans = name_spans("Vous avez la parole Madame Belkattire.")
+        self.assertEqual([(raw, via) for _, _, raw, via in spans], [("Belkattire", "parole")])
 
 
 class VideoDateTests(unittest.TestCase):
