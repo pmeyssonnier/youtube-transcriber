@@ -122,6 +122,14 @@ class TranscriptionPipeline:
                 "Attendez que la rediffusion soit disponible."
             )
 
+        video_date = None
+        stamp = metadata.get("release_timestamp") or metadata.get("timestamp")
+        if isinstance(stamp, (int, float)):
+            video_date = datetime.fromtimestamp(stamp, UTC).date().isoformat()
+        elif re.fullmatch(r"\d{8}", str(metadata.get("upload_date") or "")):
+            raw_date = str(metadata["upload_date"])
+            video_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}"
+
         duration_value = metadata.get("duration")
         try:
             duration = float(duration_value) if duration_value is not None else None
@@ -132,6 +140,7 @@ class TranscriptionPipeline:
             "title": str(metadata.get("title") or "Vidéo YouTube").strip(),
             "duration": duration,
             "uploader": str(metadata.get("uploader") or "").strip() or None,
+            "video_date": video_date,
             "webpage_url": str(metadata.get("webpage_url") or url),
         }
 
