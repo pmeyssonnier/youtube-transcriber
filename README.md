@@ -1,12 +1,18 @@
 # Transcripteur vidéo YouTube — Windows
 
-Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
+## Description
+
+**Application Windows locale qui télécharge l'audio d'une vidéo YouTube (yt-dlp), le découpe (FFmpeg) et le transcrit en parallèle avec l'API OpenAI, avec identification des intervenants. Exports JSON, Markdown, TXT, SRT et VTT.**
+
+Pensée pour les longues retransmissions (par exemple un conseil communal de plusieurs heures) : transcription par parties reprenables après une erreur ou un redémarrage, regroupement des voix d'une partie à l'autre, nom des intervenants proposé à partir de la liste des élus (à la demande), plage de transcription réglable pour ne pas payer l'introduction, et mise à jour de yt-dlp d'un clic.
+
+**Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
 **Version : 1.9.0**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
-> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.7.1 (Windows, Python 3.11+).
+> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — Windows, Python 3.11+. Licence MIT.
 
 ## Ce qui est local — et ce qui ne l’est pas
 
