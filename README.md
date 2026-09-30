@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.9.0**
+**Version : 1.9.1**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -55,7 +55,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.9.0)`.
+4. Attendez `Installation terminee (version 1.9.1)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -214,6 +214,7 @@ Niveaux : **corrigé automatiquement** (ressemblance forte, aucun autre élu aus
 
 - `elus_mandats.json` : la liste des élus avec leurs mandats par période (voir `elus_mandats.exemple.json`). La date de la séance (date de la vidéo) sert à savoir qui était en fonction, y compris le bourgmestre en titre ou faisant fonction (ff) et le président du conseil.
 - `personnes_supplementaires.json` (facultatif) : les personnes absentes de la liste (secrétaire communal…) et les fonctions supplémentaires, par exemple `{"nom": "Anne Exemple", "fonctions": [{"intitule": "échevin des Finances", "du": "2025-01-01"}]}` (voir `personnes_supplementaires.exemple.json`). Une personne présente dans les deux fichiers voit ses fonctions cumulées.
+  - **Alias** : quand vous avez confirmé qu'une graphie déformée désigne quelqu'un, ajoutez-la : `{"nom": "Anne Exemple", "alias": ["Ann Example"]}`. Elle est alors reconnue avec certitude (niveau « corrigé automatiquement ») et remplacée par la graphie officielle dans le texte normalisé. C'est le moyen de traiter les noms trop déformés pour être rapprochés automatiquement, sans baisser le seuil pour tout le monde.
 
 Limites : les noms très déformés ou absents de la liste restent « non reconnus » ; le nom cité n'est pas toujours celui de la voix qui parle ensuite ; les portefeuilles d'échevins ne sont pris en compte que s'ils figurent dans le fichier complémentaire.
 
@@ -253,6 +254,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.9.1** : alias de noms confirmés (`"alias"` dans le fichier complémentaire) et phonétique affinée ;
 - **1.9.0** : noms cités et liste des élus, **à la demande seulement** (bouton « Analyser les noms cités », suggestions de noms par règles puis IA), texte d'origine conservé ;
 - **1.8.0** : option « Relier les intervenants entre les parties » (recouvrement de 45 s ou 3 min entre parties, regroupement des voix vues ensemble dans le passage commun, « Voix 01 »…) ;
 - **1.7.1** : `demarrer.bat` met à jour automatiquement un dossier cloné avec git (`git pull --ff-only` puis vérification des composants Python) avant de démarrer ; sans git, rien ne change ;
