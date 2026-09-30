@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
+
+      - name: Installer les composants
+        run: python -m pip install -r requirements.txt -c constraints.txt pytest
+
+      - name: Tests automatiques
+        run: python -m pytest -q tests
+
+      - name: Syntaxe du JavaScript
+        if: runner.os == 'Linux' && matrix.python == '3.12'
+        run: node --check app/static/app.js
+
+      - name: Syntaxe des scripts PowerShell (Windows PowerShell 5.1)
+        if: runner.os == 'Windows' && matrix.python == '3.12'
+        shell: powershell
+        run: |
+          $failed = $false
+          foreach ($file in 'installer_windows.ps1', 'mise_a_jour.ps1') {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors -and $errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object { Write-Host "$file : $($_.Message) (ligne $($_.Extent.StartLineNumber))" }
+            }
+            else {
+              Write-Host "$file : syntaxe valide"
+            }
+          }
+          if ($failed) { exit 1 }

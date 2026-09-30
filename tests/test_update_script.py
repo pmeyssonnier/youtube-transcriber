@@ -7,7 +7,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-NEVER_REPLACED = {"METTRE_A_JOUR.bat", "data", ".venv", ".env", ".app.lock", ".git", ".sauvegarde_code"}
+# .github : configuration de l'intégration continue, inutile dans une installation
+NEVER_REPLACED = {"METTRE_A_JOUR.bat", "data", ".venv", ".env", ".app.lock", ".git", ".github", ".sauvegarde_code"}
 IGNORED = {".pytest_cache", "__pycache__", ".coverage", ".DS_Store", "Thumbs.db"}
 
 

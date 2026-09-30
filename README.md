@@ -4,6 +4,8 @@ Application locale pour télécharger l’audio d’une vidéo YouTube autorisé
 
 **Version : 1.7.1**
 
+[![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
+
 > Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.7.1 (Windows, Python 3.11+).
 
 ## Ce qui est local — et ce qui ne l’est pas
@@ -203,6 +205,10 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 Ne sont jamais touchés : `.venv`, `.env` (clé API) et `data` (historique et fichiers de transcription). Les composants Python ne sont réinstallés que si `requirements.txt` ou `constraints.txt` changent réellement.
 
 Si le téléchargement échoue (dépôt privé, réseau filtré), téléchargez le zip depuis GitHub (*Code → Download ZIP*) et glissez-le sur `METTRE_A_JOUR.bat`.
+
+## Tests automatiques
+
+À chaque envoi sur `main` et à chaque pull request, GitHub Actions (`.github/workflows/tests.yml`) lance les tests sous Ubuntu et Windows avec Python 3.11 et 3.12, vérifie la syntaxe du JavaScript et celle des scripts PowerShell (Windows PowerShell 5.1). En local : `python -m pip install pytest` puis `python -m pytest tests`.
 
 ## Historique
 
