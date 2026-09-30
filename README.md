@@ -2,9 +2,9 @@
 
 Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
 
-**Version : 1.5.0**
+**Version : 1.6.0**
 
-> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.5.0 (Windows, Python 3.11+).
+> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.6.0 (Windows, Python 3.11+).
 
 ## Ce qui est local — et ce qui ne l’est pas
 
@@ -46,7 +46,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.5.0)`.
+4. Attendez `Installation terminee (version 1.6.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -192,8 +192,19 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 | `app/static/` | interface HTML, CSS et JavaScript |
 | `tests/` | tests automatisés |
 
+## Mettre à jour sans tout réinstaller
+
+1. Fermez la fenêtre noire de l'application.
+2. Double-cliquez sur `METTRE_A_JOUR.bat` : il télécharge la dernière version depuis GitHub, sauvegarde l'ancien code dans `.sauvegarde_code\` et remplace le code.
+3. Relancez `demarrer.bat`, puis faites `Ctrl+F5` dans le navigateur.
+
+Ne sont jamais touchés : `.venv`, `.env` (clé API) et `data` (historique et fichiers de transcription). Les composants Python ne sont réinstallés que si `requirements.txt` ou `constraints.txt` changent réellement.
+
+Si le téléchargement échoue (dépôt privé, réseau filtré), téléchargez le zip depuis GitHub (*Code → Download ZIP*) et glissez-le sur `METTRE_A_JOUR.bat`.
+
 ## Historique
 
+- **1.6.0** : script `METTRE_A_JOUR.bat` (mise à jour du code sans réinstaller, données conservées) ;
 - **1.5.0** : clé API et mise à jour de yt-dlp déplacées dans une fenêtre « Paramètres » (écran principal allégé, ouverture automatique tant que la clé n'est pas configurée) ;
 - **1.4.0** : plage de transcription (début/fin) avec aperçu vidéo et curseurs facultatifs ; l'aperçu charge le lecteur YouTube depuis le navigateur, uniquement à la demande ;
 - **1.3.0** : vérification des intervenants enrichie (part du texte, première intervention, extrait, tri, fusion par nom, masquage des voix secondaires) et suggestion de noms par IA à valider ;
