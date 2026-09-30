@@ -1,0 +1,30 @@
+[
+  {
+    "nom": "Anne Exemple",
+    "conseiller_communal": "2018-présent",
+    "echevin": "2025-présent",
+    "bourgmestre": null,
+    "statut": "Échevin(e) / Conseiller communal"
+  },
+  {
+    "nom": "Paul Modèle",
+    "conseiller_communal": "2012-présent",
+    "echevin": null,
+    "bourgmestre": "2026-présent (faisant fonction)",
+    "statut": "Bourgmestre f.f. / Conseiller communal"
+  },
+  {
+    "nom": "Claire Titulaire",
+    "conseiller_communal": "2024-présent",
+    "echevin": null,
+    "bourgmestre": "2025-présent (en titre; empêchée en 2026)",
+    "statut": "Bourgmestre empêchée / Conseillère communale"
+  },
+  {
+    "nom": "Jean Président",
+    "conseiller_communal": "2012-présent",
+    "echevin": null,
+    "bourgmestre": null,
+    "statut": "Président du conseil communal / Conseiller communal"
+  }
+]

@@ -150,13 +150,24 @@ def _clean_suggestions(payload: Any, allowed: set[str]) -> list[dict[str, str]]:
             "name": name,
             "confidence": confidence if confidence in CONFIDENCE_LEVELS else "faible",
             "evidence": _snippet(str(item.get("evidence", "")), 160),
+            "source": "IA",
         }
     return list(cleaned.values())
 
 
-def request_name_suggestions(client: Any, contexts: list[dict[str, Any]]) -> list[dict[str, str]]:
+def request_name_suggestions(
+    client: Any,
+    contexts: list[dict[str, Any]],
+    known_people: list[str] | None = None,
+) -> list[dict[str, str]]:
     """Ask the language model for name proposals, in small batches."""
     model = os.getenv("NAMING_MODEL", NAMING_MODEL_DEFAULT)
+    prompt = PROMPT
+    if known_people:
+        prompt += (
+            "\nListe officielle des personnes en fonction (utilise exactement cette orthographe quand tu reconnais "
+            "quelqu'un, même si la transcription l'a déformée) : " + " ; ".join(known_people[:120])
+        )
     suggestions: list[dict[str, str]] = []
     for start in range(0, len(contexts), LABELS_PER_REQUEST):
         batch = contexts[start : start + LABELS_PER_REQUEST]
@@ -165,7 +176,7 @@ def request_name_suggestions(client: Any, contexts: list[dict[str, Any]]) -> lis
             temperature=0,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": PROMPT},
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": json.dumps({"etiquettes": batch}, ensure_ascii=False)},
             ],
         )

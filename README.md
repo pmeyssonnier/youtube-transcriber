@@ -2,7 +2,7 @@
 
 Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
 
-**Version : 1.8.0**
+**Version : 1.9.0**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -49,7 +49,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.8.0)`.
+4. Attendez `Installation terminee (version 1.9.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -195,6 +195,22 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 | `app/static/` | interface HTML, CSS et JavaScript |
 | `tests/` | tests automatisés |
 
+## Noms cités et liste des élus (à la demande)
+
+**Rien n'est chargé ni analysé par défaut** : sans action de votre part, le transcripteur ne lit aucune liste d'élus, ne modifie ni n'annote aucune transcription, et n'ajoute aucun fichier. Tout se déclenche depuis « Vérifier les intervenants » :
+
+- **Analyser les noms cités** : repère les noms prononcés (« Madame Belkattire, vous avez la parole »), les rapproche de la liste des élus et écrit le fichier **Noms cités (CSV)**. Le texte d'origine n'est jamais modifié : chaque phrase reçoit en plus `mentions` (nom reconnu, fonction, score, niveau) et, quand la correction est sûre, `text_normalized` (même phrase avec l'orthographe officielle) dans le JSON.
+- **Suggérer des noms** : propose un nom pour chaque voix. D'abord par règles, gratuites et locales (« Madame X, vous avez la parole » désigne la voix suivante, « Merci Madame X » la voix précédente, la voix qui donne la parole plusieurs fois est le président), puis, pour les voix restantes, par IA (courts extraits de texte envoyés à OpenAI, avec la liste des élus pour l'orthographe). Chaque suggestion indique sa source et sa justification et doit être validée avant enregistrement.
+
+Niveaux : **corrigé automatiquement** (ressemblance forte, aucun autre élu aussi proche), **à vérifier** (ressemblance moyenne, ambiguïté, ou ancien élu dont le mandat était terminé à la date de la séance), **non reconnu** (absent de la liste : citoyen, administration…).
+
+**Fichiers à fournir** (dans `data/referentiel/`, ignorés par git, conservés lors des mises à jour) :
+
+- `elus_mandats.json` : la liste des élus avec leurs mandats par période (voir `elus_mandats.exemple.json`). La date de la séance (date de la vidéo) sert à savoir qui était en fonction, y compris le bourgmestre en titre ou faisant fonction (ff) et le président du conseil.
+- `personnes_supplementaires.json` (facultatif) : les personnes absentes de la liste (secrétaire communal…) et les fonctions supplémentaires, par exemple `{"nom": "Anne Exemple", "fonctions": [{"intitule": "échevin des Finances", "du": "2025-01-01"}]}` (voir `personnes_supplementaires.exemple.json`). Une personne présente dans les deux fichiers voit ses fonctions cumulées.
+
+Limites : les noms très déformés ou absents de la liste restent « non reconnus » ; le nom cité n'est pas toujours celui de la voix qui parle ensuite ; les portefeuilles d'échevins ne sont pris en compte que s'ils figurent dans le fichier complémentaire.
+
 ## Relier les intervenants entre les parties
 
 La diarisation d'OpenAI recalcule ses étiquettes (A, B, C…) à chaque partie audio : sans aide, une même personne apparaît sous autant d'identifiants que de parties. L'option **Relier les intervenants entre les parties** (Options avancées, active en mode « Léger » par défaut) fait déborder chaque partie sur la suivante (45 s en mode léger, 3 min en mode renforcé). Les personnes qui parlent dans ce passage commun sont reconnues d'une partie à l'autre et regroupées sous un même nom (« Voix 01 », « Voix 02 »…). La transcription bascule d'une partie à l'autre à un moment de silence, sans phrase perdue ni répétée.
@@ -231,6 +247,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.9.0** : noms cités et liste des élus, **à la demande seulement** (bouton « Analyser les noms cités », suggestions de noms par règles puis IA), texte d'origine conservé ;
 - **1.8.0** : option « Relier les intervenants entre les parties » (recouvrement de 45 s ou 3 min entre parties, regroupement des voix vues ensemble dans le passage commun, « Voix 01 »…) ;
 - **1.7.1** : `demarrer.bat` met à jour automatiquement un dossier cloné avec git (`git pull --ff-only` puis vérification des composants Python) avant de démarrer ; sans git, rien ne change ;
 - **1.7.0** : yt-dlp stable par défaut (les versions de développement ne s'installent que sur demande, case dédiée dans les Paramètres) ; l'option 30 minutes est désactivée avec la distinction des intervenants (20 minutes au plus) et l'estimation des parties en tient compte ; test de mise à jour insensible aux dossiers d'outils (.ruff_cache, .vscode…) ;

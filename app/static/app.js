@@ -529,12 +529,36 @@ async function openSpeakerDetails(jobId) {
     }
 }
 
+async function analyzeNames() {
+    const jobId = state.selectedJobId;
+    if (!jobId) return;
+    const button = document.querySelector("#analyzeNames");
+    const message = document.querySelector("#suggestMessage");
+    button.disabled = true;
+    message.className = "form-message";
+    message.textContent = "Analyse des noms cités…";
+    try {
+        const result = await api(`/api/jobs/${jobId}/names`, { method: "POST" });
+        const stats = result.stats;
+        message.textContent = `${stats.mentions} noms cités : ${stats.reconnues} corrigés automatiquement, `
+            + `${stats.a_verifier} à vérifier, ${stats.inconnues} non reconnus (liste de ${stats.elus_en_exercice} élus en exercice en ${stats.annee_reference}). `
+            + "Le fichier « Noms cités (CSV) » est disponible dans la liste des traitements.";
+        await loadJobs();
+    } catch (error) {
+        message.className = "form-message error";
+        message.textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
 async function suggestNames() {
     const jobId = state.selectedJobId;
     if (!jobId) return;
     if (!window.confirm(
-        "Des extraits courts de la transcription (texte uniquement, pas l'audio) vont être envoyés à OpenAI "
-        + "pour proposer des noms. Cela consomme un peu de crédit API. Continuer ?"
+        "Les formules de passage de parole (« Madame X, vous avez la parole ») sont analysées sur votre ordinateur. "
+        + "Pour les autres voix, de courts extraits de la transcription (texte uniquement, pas l'audio) peuvent être "
+        + "envoyés à OpenAI, ce qui consomme un peu de crédit API. Continuer ?"
     )) return;
     const button = document.querySelector("#suggestNames");
     const message = document.querySelector("#suggestMessage");
@@ -551,11 +575,14 @@ async function suggestNames() {
             if (input.value !== suggestion.label) continue; // ne jamais écraser un nom déjà saisi
             input.value = suggestion.name;
             const slot = row.querySelector(".speaker-badge-slot");
-            slot.innerHTML = `<span class="speaker-badge ${escapeHtml(suggestion.confidence)}" title="${escapeHtml(suggestion.evidence)}">Suggestion ${escapeHtml(suggestion.confidence)} · ${escapeHtml(suggestion.evidence)}</span>`;
+            const source = suggestion.source ? ` (${suggestion.source})` : "";
+            slot.innerHTML = `<span class="speaker-badge ${escapeHtml(suggestion.confidence)}" title="${escapeHtml(suggestion.evidence)}">Suggestion ${escapeHtml(suggestion.confidence)}${escapeHtml(source)} · ${escapeHtml(suggestion.evidence)}</span>`;
             applied += 1;
         }
-        message.textContent = `${applied} suggestion(s) proposée(s) sur ${result.analyzed_labels} voix analysées`
+        message.textContent = `${applied} suggestion(s) proposée(s) dont ${result.by_rules || 0} par règles`
+            + (result.analyzed_labels ? `, ${result.analyzed_labels} voix soumises à l'IA` : "")
             + (result.skipped_labels ? ` (${result.skipped_labels} voix très courtes ignorées)` : "")
+            + (result.note ? ` — ${result.note}` : "")
             + ". Ce sont des hypothèses : vérifiez-les, puis cliquez sur « Enregistrer les noms ».";
     } catch (error) {
         message.className = "form-message error";
@@ -740,6 +767,7 @@ document.querySelector("#updateYtdlp").addEventListener("click", async (event) =
 setupRangeControls();
 setupSettingsDialog();
 document.querySelector("#suggestNames").addEventListener("click", suggestNames);
+document.querySelector("#analyzeNames").addEventListener("click", analyzeNames);
 document.querySelector("#hideMinor").addEventListener("change", applyMinorFilter);
 document.querySelector("#closeDetails").addEventListener("click", closeSpeakerDetails);
 document.querySelector("#refreshJobs").addEventListener("click", loadJobs);

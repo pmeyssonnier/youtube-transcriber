@@ -33,6 +33,7 @@ from .pipeline import PipelineError, TranscriptionPipeline
 from .store import DuplicateJobError, JobStore
 from .ytdlp import YtDlpUpdateError, update_ytdlp, ytdlp_version
 from .timerange import effective_duration, validate_time_range
+from .people import analyze_names, cue_suggestions, parse_video_date, roster_available, roster_names, write_names_csv
 from .speakers import SuggestionError, naming_contexts, request_name_suggestions, speaker_stats
 from .youtube import validate_cookie_browser, validate_youtube_url, youtube_video_identity
 
@@ -140,6 +141,8 @@ def _output_files(job: dict, speaker_names: dict[str, str]) -> list[dict[str, st
         "speaker_labels_need_review": bool(job.get("diarize")),
     }
     files = write_exports(Path(job["output_dir"]), metadata, job.get("segments", []), speaker_names)
+    if job.get("names_analysis"):
+        files.append(write_names_csv(Path(job["output_dir"]), job["names_analysis"]))
     source = Path(job.get("job_dir") or Path(job["output_dir"]).parent) / "source" / "source.m4a"
     if source.exists():
         files.append({"name": "source.m4a", "label": "Audio M4A", "kind": "source"})
@@ -312,6 +315,7 @@ def create_job(request: JobRequest) -> dict:
         "id": job_id,
         "url": url,
         "video_identity": inspection["video_identity"],
+        "video_date": inspection.get("video_date"),
         "title": inspection["title"],
         "duration": inspection.get("duration"),
         "status": "queued",
@@ -400,20 +404,59 @@ def suggest_speaker_names(job_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Traitement introuvable.")
     if job.get("status") != "completed":
         raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
-    api_key = get_openai_api_key()
-    if not api_key:
-        raise HTTPException(status_code=409, detail="Configurez d'abord votre clé API OpenAI.")
 
-    contexts, skipped = naming_contexts(job.get("segments", []))
-    if not contexts:
+    segments = job.get("segments", [])
+    video_date = parse_video_date(job.get("video_date"))
+    by_rules = cue_suggestions(segments, video_date)  # formules de passage de parole : gratuit, sans IA
+    handled = {item["label"] for item in by_rules}
+    contexts, skipped = naming_contexts(segments)
+    contexts = [item for item in contexts if item["label"] not in handled]
+    if not contexts and not by_rules:
         raise HTTPException(status_code=409, detail="Pas assez de paroles pour proposer des noms.")
-    try:
-        suggestions = request_name_suggestions(OpenAI(api_key=api_key, max_retries=3, timeout=120), contexts)
-    except SuggestionError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except OpenAIError as exc:
-        raise HTTPException(status_code=502, detail=f"L'analyse a échoué : {exc}") from exc
-    return {"suggestions": suggestions, "analyzed_labels": len(contexts), "skipped_labels": skipped}
+
+    by_model: list[dict[str, str]] = []
+    note = None
+    api_key = get_openai_api_key()
+    if contexts and api_key:
+        try:
+            client = OpenAI(api_key=api_key, max_retries=3, timeout=120)
+            by_model = request_name_suggestions(client, contexts, roster_names(video_date))
+        except SuggestionError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except OpenAIError as exc:
+            raise HTTPException(status_code=502, detail=f"L'analyse a échoué : {exc}") from exc
+    elif contexts and not by_rules:
+        raise HTTPException(status_code=409, detail="Configurez d'abord votre clé API OpenAI.")
+    elif contexts:
+        note = "Clé API OpenAI absente : seules les suggestions par règles sont proposées."
+    return {
+        "suggestions": by_rules + by_model,
+        "analyzed_labels": len(contexts),
+        "skipped_labels": skipped,
+        "by_rules": len(by_rules),
+        "note": note,
+    }
+
+
+@app.post("/api/jobs/{job_id}/names")
+def analyze_job_names(job_id: str) -> dict:
+    """(Re)compute the cited names of a finished job and regenerate its files; nothing is re-transcribed."""
+    job = store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Traitement introuvable.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
+    if not roster_available():
+        raise HTTPException(
+            status_code=409,
+            detail="Aucune liste d'élus trouvée. Placez elus_mandats.json dans le dossier data/referentiel.",
+        )
+    segments = job.get("segments", [])
+    analysis = analyze_names(segments, parse_video_date(job.get("video_date")))
+    job = {**job, "segments": segments, "names_analysis": analysis}
+    files = _output_files(job, job.get("speaker_names", {}))
+    store.update(job_id, segments=segments, names_analysis=analysis, files=files, message="Noms cités analysés.")
+    return {"stats": analysis["stats"], "files": files}
 
 
 @app.post("/api/jobs/{job_id}/speakers")

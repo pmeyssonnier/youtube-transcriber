@@ -7,3 +7,5 @@ data/jobs/*
 !data/jobs/.gitkeep
 .pytest_cache/
 .sauvegarde_code/
+data/referentiel/*.json
+!data/referentiel/*.exemple.json
