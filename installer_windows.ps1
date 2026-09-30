@@ -147,6 +147,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ''
-Write-Host 'Installation terminee (version 1.7.1).' -ForegroundColor Green
+Write-Host 'Installation terminee (version 1.8.0).' -ForegroundColor Green
 Write-Host "Utilisez maintenant demarrer.bat pour ouvrir l'application."
 Write-Host "Si Windows signale encore une commande introuvable, fermez cette fenetre puis relancez INSTALLER.bat."

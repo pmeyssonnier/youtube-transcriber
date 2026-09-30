@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -15,14 +16,20 @@ from openai import OpenAI
 
 from .config import JOBS_DIR, get_openai_api_key
 from .constants import (
+    DIARIZATION_MAX_AUDIO_SECONDS,
     DIARIZATION_MAX_CHUNK_MINUTES,
     DIARIZATION_MODEL,
     MAX_AUDIO_FILE_BYTES,
     STANDARD_MODEL,
 )
 from .exporters import write_exports
+from .stitching import OVERLAP_BY_MODE, stitch_segments
 from .store import JobStore
 from .youtube import youtube_video_identity
+
+
+# Une dernière partie plus courte que cela est absorbée par la précédente.
+MIN_LAST_CHUNK_SECONDS = 30.0
 
 
 class PipelineError(RuntimeError):
@@ -184,8 +191,16 @@ class TranscriptionPipeline:
             chunk_minutes = min(chunk_minutes, DIARIZATION_MAX_CHUNK_MINUTES)
         range_start = job.get("start_seconds")
         range_end = job.get("end_seconds")
+        # Recouvrement entre parties : relie les étiquettes d'intervenants d'une partie à l'autre.
+        # Les anciens traitements (champ absent) gardent leur comportement d'origine : pas de recouvrement.
+        link_mode = str(job.get("speaker_linking", "off")) if diarize else "off"
+        overlap = OVERLAP_BY_MODE.get(link_mode, 0.0)
+        link_speakers = overlap > 0
+        chunk_seconds = chunk_minutes * 60
+        if diarize:
+            chunk_seconds = min(chunk_seconds, int(DIARIZATION_MAX_AUDIO_SECONDS - overlap))
         chunks = self._split_audio(
-            audio_path, chunks_dir, results_dir, chunk_minutes * 60, range_start, range_end
+            audio_path, chunks_dir, results_dir, chunk_seconds, range_start, range_end, overlap
         )
         if not chunks:
             raise PipelineError("FFmpeg n'a créé aucune partie audio.")
@@ -225,11 +240,13 @@ class TranscriptionPipeline:
         )
 
         chunk_durations = [self._duration(chunk) for chunk in chunks]
-        offsets: list[float] = []
-        running_offset = float(range_start or 0.0)
-        for chunk_duration in chunk_durations:
-            offsets.append(running_offset)
-            running_offset += chunk_duration
+        offsets = self._planned_offsets(chunks_dir, len(chunks))
+        if offsets is None:
+            offsets = []
+            running_offset = float(range_start or 0.0)
+            for chunk_duration in chunk_durations:
+                offsets.append(running_offset)
+                running_offset += chunk_duration
 
         api_concurrency = max(1, min(6, int(job.get("api_concurrency", 4))))
         pending_indices = [index for index in range(len(chunks)) if index not in checkpoints]
@@ -292,12 +309,14 @@ class TranscriptionPipeline:
         if failures:
             raise PipelineError(f"Une partie n'a pas pu être transcrite : {failures[0]}") from failures[0]
 
-        segments: list[dict[str, Any]] = []
+        results: list[list[dict[str, Any]]] = []
         for index in range(len(chunks)):
             checkpoint = checkpoints.get(index)
             if checkpoint is None:
                 raise PipelineError(f"Le résultat sauvegardé de la partie {index + 1} est manquant.")
-            segments.extend(checkpoint["segments"])
+            results.append(checkpoint["segments"])
+        windows = [(offsets[index], offsets[index] + chunk_durations[index]) for index in range(len(chunks))]
+        segments, stitching = stitch_segments(results, windows, relabel=link_speakers)
         offset = float(range_start or 0.0) + sum(chunk_durations)
 
         speakers = sorted({segment["speaker"] for segment in segments})
@@ -309,6 +328,8 @@ class TranscriptionPipeline:
             message="Création des fichiers…",
             segments=segments,
             speaker_names=speaker_names,
+            speaker_labels_raw=stitching["raw_labels"],
+            speaker_labels_merged=stitching["voices"],
         )
 
         metadata = {
@@ -323,11 +344,14 @@ class TranscriptionPipeline:
         files = write_exports(output_dir, metadata, segments, speaker_names)
         files.append({"name": "source.m4a", "label": "Audio M4A", "kind": "source"})
         warning = None if segments else "Aucune parole n'a été détectée dans la vidéo."
+        done = "Transcription terminée."
+        if link_speakers and segments:
+            done += f" Intervenants regroupés entre les parties : {stitching['raw_labels']} → {stitching['voices']}."
         self.store.update(
             job_id,
             status="completed",
             progress=100,
-            message=warning or "Transcription terminée.",
+            message=warning or done,
             warning=warning,
             files=files,
             output_dir=str(output_dir),
@@ -433,6 +457,7 @@ class TranscriptionPipeline:
         seconds: int,
         start: float | None = None,
         end: float | None = None,
+        overlap: float = 0.0,
     ) -> list[Path]:
         source_duration = self._duration(audio_path)
         fingerprint = {
@@ -449,7 +474,11 @@ class TranscriptionPipeline:
             range_args += ["-t", f"{float(end) - float(start or 0.0):.3f}"]
         manifest_path = chunks_dir / "manifest.json"
         manifest = self._read_json(manifest_path)
-        if manifest and all(manifest.get(key) == value for key, value in fingerprint.items()):
+        if (
+            manifest
+            and all(manifest.get(key) == value for key, value in fingerprint.items())
+            and float(manifest.get("overlap_seconds", 0.0)) == float(overlap)
+        ):
             names = manifest.get("chunks", [])
             existing = [chunks_dir / str(name) for name in names]
             if existing and all(path.exists() and path.stat().st_size > 0 for path in existing):
@@ -462,6 +491,11 @@ class TranscriptionPipeline:
             old_result.unlink()
         if manifest_path.exists():
             manifest_path.unlink()
+
+        if overlap > 0:
+            return self._split_with_overlap(
+                audio_path, chunks_dir, manifest_path, fingerprint, seconds, start, end, source_duration, overlap
+            )
 
         self._run_command(
             [
@@ -498,6 +532,71 @@ class TranscriptionPipeline:
             {**fingerprint, "version": 1, "chunks": [path.name for path in chunks]},
         )
         return chunks
+
+    @staticmethod
+    def _chunk_plan(span_start: float, span_end: float, seconds: int, overlap: float) -> list[tuple[float, float]]:
+        """(start, length) of every chunk: each one runs ``overlap`` seconds into the next."""
+        span = max(0.0, span_end - span_start)
+        count = max(1, math.ceil(span / seconds - 1e-9))
+        if count > 1 and span - (count - 1) * seconds < MIN_LAST_CHUNK_SECONDS:
+            count -= 1
+        plan = []
+        for index in range(count):
+            chunk_start = span_start + index * seconds
+            remaining = span_end - chunk_start
+            length = remaining if index == count - 1 else min(seconds + overlap, remaining)
+            plan.append((chunk_start, length))
+        return plan
+
+    def _split_with_overlap(
+        self,
+        audio_path: Path,
+        chunks_dir: Path,
+        manifest_path: Path,
+        fingerprint: dict[str, Any],
+        seconds: int,
+        start: float | None,
+        end: float | None,
+        source_duration: float,
+        overlap: float,
+    ) -> list[Path]:
+        span_start = float(start or 0.0)
+        span_end = min(float(end), source_duration) if end else source_duration
+        plan = self._chunk_plan(span_start, span_end, seconds, overlap)
+        chunks: list[Path] = []
+        for index, (chunk_start, length) in enumerate(plan):
+            target = chunks_dir / f"chunk_{index:03d}.mp3"
+            self._run_command(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-ss", f"{chunk_start:.3f}", "-t", f"{length:.3f}",
+                    "-i", str(audio_path),
+                    "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-b:a", "64k",
+                    str(target),
+                ],
+                "La préparation audio avec FFmpeg a échoué.",
+            )
+            chunks.append(target)
+        self._validate_chunk_sizes(chunks)
+        self._write_json_atomic(
+            manifest_path,
+            {
+                **fingerprint,
+                "version": 1,
+                "overlap_seconds": float(overlap),
+                "offsets": [round(chunk_start, 3) for chunk_start, _ in plan],
+                "chunks": [path.name for path in chunks],
+            },
+        )
+        return chunks
+
+    def _planned_offsets(self, chunks_dir: Path, count: int) -> list[float] | None:
+        """Start of each chunk in the video when the split recorded it (overlapping chunks)."""
+        manifest = self._read_json(chunks_dir / "manifest.json")
+        offsets = manifest.get("offsets") if manifest else None
+        if isinstance(offsets, list) and len(offsets) == count:
+            return [float(value) for value in offsets]
+        return None
 
     @staticmethod
     def _validate_chunk_sizes(chunks: list[Path]) -> None:

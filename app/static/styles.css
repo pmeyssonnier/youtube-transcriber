@@ -263,3 +263,5 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .settings-section p { margin-bottom: 0; color: var(--muted); }
 .settings-section.ytdlp-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .settings-section.configured .section-kicker::after { content: " · enregistrée"; color: var(--accent); }
+
+.advanced-grid .wide { grid-column: 1 / -1; }

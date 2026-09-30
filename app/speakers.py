@@ -44,8 +44,9 @@ def speaker_stats(segments: list[dict[str, Any]], names: dict[str, str]) -> list
         total_words += words
         item = stats.setdefault(
             label,
-            {"label": label, "segments": 0, "words": 0, "seconds": 0.0, "first_start": start, "sample": ""},
+            {"label": label, "segments": 0, "words": 0, "seconds": 0.0, "first_start": start, "sample": "", "_parts": set()},
         )
+        item["_parts"].add(segment.get("chunk_index"))
         item["segments"] += 1
         item["words"] += words
         item["seconds"] += max(0.0, end - start)
@@ -55,6 +56,7 @@ def speaker_stats(segments: list[dict[str, Any]], names: dict[str, str]) -> list
 
     result = []
     for label, item in stats.items():
+        item["parts"] = len(item.pop("_parts"))
         item["name"] = names.get(label, label)
         item["share"] = round(item["words"] / total_words, 4) if total_words else 0.0
         item["seconds"] = round(item["seconds"], 1)
