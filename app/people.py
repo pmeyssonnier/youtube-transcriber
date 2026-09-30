@@ -45,7 +45,7 @@ _FLOOR_BEFORE = re.compile(
     r"(?:(?:" + _CIVILITY + r")\s+)?" + _NAME + r"\s*,?\s+(?i:vous\s+avez\s+la\s+parole|je\s+vous\s+donne\s+la\s+parole|la\s+parole\s+est\s+à\s+vous)"
 )
 _FLOOR_NAMED_AFTER = re.compile(
-    r"(?i:vous\s+avez\s+la\s+parole|la\s+parole\s+est\s+à\s+vous)\s*,\s*(?:(?:" + _CIVILITY + r")\s+)?" + _NAME
+    r"(?i:vous\s+avez\s+la\s+parole|la\s+parole\s+est\s+à\s+vous)\s*,?\s*(?:(?:" + _CIVILITY + r")\s+)?" + _NAME
 )
 _GENERIC_FLOOR = re.compile(r"(?:vous\s+avez\s+la\s+parole|je\s+vous\s+(?:donne|cède)\s+la\s+parole|la\s+parole\s+est\s+à\s+(?:vous|\w))", re.I)
 _THANKS = re.compile(
@@ -290,13 +290,35 @@ def _is_name(candidate: str) -> bool:
     return bool(first) and first not in _NOT_A_NAME
 
 
+_TITLE_FORMS = ("echevin", "echevine", "lechevin", "lechevine")
+TITLE_SCORE = 0.75  # « Léchine », « Leschvin »… : « l'échevin(e) » entendu comme un nom
+_GROUP_BEFORE = re.compile(r"(?i:groupes?)\s+(?:(?i:du|de|des)\s+)?$")
+
+
+def is_title_like(text: str) -> bool:
+    """Is this « name » really the title « (l')échevin(e) » distorted by the transcriber?"""
+    key_phonetic, key_plain = phonetic(text), plain(text)
+    return any(
+        max(similarity(key_phonetic, phonetic(title)), similarity(key_plain, plain(title))) >= TITLE_SCORE
+        for title in _TITLE_FORMS
+    )
+
+
+def _not_a_person(text: str, raw: str, start: int) -> bool:
+    """Party/group names (« pour le groupe ETB », PTB, MR…) are not people."""
+    letters = plain(raw)
+    if raw.isupper() and len(letters) <= 5:
+        return True
+    return bool(_GROUP_BEFORE.search(text[max(0, start - 25): start]))
+
+
 def name_spans(text: str) -> list[tuple[int, int, str, str]]:
     """(start, end, name, how) of every person name found in a sentence, left to right."""
     found: dict[int, tuple[int, int, str, str]] = {}
     for pattern, via in ((_MENTION, "civilité"), (_FLOOR_AFTER, "parole"), (_FLOOR_BEFORE, "parole"), (_FLOOR_NAMED_AFTER, "parole")):
         for match in pattern.finditer(text):
             raw = match.group(1)
-            if raw and _is_name(raw):
+            if raw and _is_name(raw) and not _not_a_person(text, raw, match.start(1)):
                 start = match.start(1)
                 # une formule de passage de parole l'emporte sur une simple mention du même nom
                 if via == "parole" or start not in found:
@@ -319,6 +341,7 @@ def analyze_names(
     matcher = Matcher(active, former)
     rows: dict[str, dict[str, Any]] = {}
     unknown: dict[str, int] = {}
+    titles = 0
 
     for index, segment in enumerate(segments):
         segment.pop("mentions", None)
@@ -327,6 +350,11 @@ def analyze_names(
         mentions, corrected = [], text
         for start, end, raw, via in name_spans(text):
             result = matcher.match_tokens(raw)
+            if result.level == "inconnu" and is_title_like(raw):
+                # un titre, pas une personne : on le signale sans le compter comme nom inconnu
+                mentions.append({"raw": raw, "via": via, "level": "titre", "score": 0.0, "person": None, "function": None, "role": "échevin(e)"})
+                titles += 1
+                continue
             mention = {
                 "raw": raw, "via": via, "level": result.level, "score": round(result.score, 2),
                 "person": result.person.name if result.person else None,
@@ -362,6 +390,7 @@ def analyze_names(
         "reconnues": sum(row["niveaux"].get("auto", 0) for row in summary),
         "a_verifier": sum(row["niveaux"].get("verifier", 0) for row in summary),
         "inconnues": sum(unknown.values()),
+        "titres": titles,
         "annee_reference": (reference_date or date.today()).year,
         "elus_en_exercice": len(active),
     }

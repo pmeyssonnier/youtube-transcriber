@@ -541,7 +541,9 @@ async function analyzeNames() {
         const result = await api(`/api/jobs/${jobId}/names`, { method: "POST" });
         const stats = result.stats;
         message.textContent = `${stats.mentions} noms cités : ${stats.reconnues} corrigés automatiquement, `
-            + `${stats.a_verifier} à vérifier, ${stats.inconnues} non reconnus (liste de ${stats.elus_en_exercice} élus en exercice en ${stats.annee_reference}). `
+            + `${stats.a_verifier} à vérifier, ${stats.inconnues} non reconnus`
+            + (stats.titres ? `, ${stats.titres} titres « l'échevin(e) » ignorés` : "")
+            + ` (liste de ${stats.elus_en_exercice} élus en exercice en ${stats.annee_reference}). `
             + "Le fichier « Noms cités (CSV) » est disponible dans la liste des traitements.";
         await loadJobs();
     } catch (error) {

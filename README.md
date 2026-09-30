@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.9.1**
+**Version : 1.9.2**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -55,7 +55,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.9.1)`.
+4. Attendez `Installation terminee (version 1.9.2)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -208,6 +208,8 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 - **Analyser les noms cités** : repère les noms prononcés (« Madame Belkattire, vous avez la parole »), les rapproche de la liste des élus et écrit le fichier **Noms cités (CSV)**. Le texte d'origine n'est jamais modifié : chaque phrase reçoit en plus `mentions` (nom reconnu, fonction, score, niveau) et, quand la correction est sûre, `text_normalized` (même phrase avec l'orthographe officielle) dans le JSON.
 - **Suggérer des noms** : propose un nom pour chaque voix. D'abord par règles, gratuites et locales (« Madame X, vous avez la parole » désigne la voix suivante, « Merci Madame X » la voix précédente, la voix qui donne la parole plusieurs fois est le président), puis, pour les voix restantes, par IA (courts extraits de texte envoyés à OpenAI, avec la liste des élus pour l'orthographe). Chaque suggestion indique sa source et sa justification et doit être validée avant enregistrement.
 
+Les titres « l'échevin(e) » que la transcription déforme en faux noms (« Madame Léchine de la mobilité ») sont repérés comme **titres** et ignorés, de même que les noms de groupes et sigles (« pour le groupe PTB »).
+
 Niveaux : **corrigé automatiquement** (ressemblance forte, aucun autre élu aussi proche), **à vérifier** (ressemblance moyenne, ambiguïté, ou ancien élu dont le mandat était terminé à la date de la séance), **non reconnu** (absent de la liste : citoyen, administration…).
 
 **Fichiers à fournir** (dans `data/referentiel/`, ignorés par git, conservés lors des mises à jour) :
@@ -254,6 +256,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.9.2** : les titres « l'échevin(e) » déformés (« Léchine », « Leschvin »…) ne sont plus comptés comme des noms inconnus, les noms de groupes et sigles (« pour le groupe PTB ») sont ignorés, « vous avez la parole Madame X » est compris sans virgule ;
 - **1.9.1** : alias de noms confirmés (`"alias"` dans le fichier complémentaire) et phonétique affinée ;
 - **1.9.0** : noms cités et liste des élus, **à la demande seulement** (bouton « Analyser les noms cités », suggestions de noms par règles puis IA), texte d'origine conservé ;
 - **1.8.0** : option « Relier les intervenants entre les parties » (recouvrement de 45 s ou 3 min entre parties, regroupement des voix vues ensemble dans le passage commun, « Voix 01 »…) ;
