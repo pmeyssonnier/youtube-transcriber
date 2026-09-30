@@ -308,6 +308,7 @@ const DIARIZE_MAX_CHUNK_MINUTES = 20;
 
 function syncChunkOptions() {
     const diarize = document.querySelector("#diarize").checked;
+    document.querySelector("#speakerLinking").disabled = !diarize;
     const select = document.querySelector("#chunkMinutes");
     for (const option of select.options) {
         const tooLong = Number(option.value) > DIARIZE_MAX_CHUNK_MINUTES;
@@ -495,7 +496,7 @@ function renderSpeakerRows(speakers) {
             <div class="speaker-row${minor ? " minor" : ""}" data-label="${escapeHtml(speaker.label)}">
                 <div>
                     <code>${index + 1}. ${escapeHtml(speaker.label)}</code>
-                    <div class="speaker-meta">${percent} % du texte · ${speaker.segments} phrases · dès ${formatClock(speaker.first_start)}</div>
+                    <div class="speaker-meta">${percent} % du texte · ${speaker.segments} phrases · dès ${formatClock(speaker.first_start)}${speaker.parts > 1 ? ` · ${speaker.parts} parties` : ""}</div>
                 </div>
                 <div class="speaker-sample">${speaker.sample ? `« ${escapeHtml(speaker.sample)} »` : ""}</div>
                 <div>
@@ -658,6 +659,7 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
                 inspection_id: state.inspection.inspection_id,
                 confirm_long_video: document.querySelector("#confirmLong").checked,
                 diarize: document.querySelector("#diarize").checked,
+                speaker_linking: document.querySelector("#diarize").checked ? document.querySelector("#speakerLinking").value : "off",
                 chunk_minutes: chunkMinutes,
                 api_concurrency: Number(document.querySelector("#apiConcurrency").value),
                 cookie_browser: cookieBrowser,

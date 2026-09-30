@@ -177,7 +177,7 @@ class PipelineRangeTests(unittest.TestCase):
                     patch("app.pipeline.OpenAI", return_value=object()),
                 ):
                     pipeline._run(job_id)
-                self.assertEqual(split.call_args.args[4:], (1200.0, None))
+                self.assertEqual(split.call_args.args[4:], (1200.0, None, 0.0))
                 result = store.get(job_id)
                 self.assertEqual([item["start"] for item in result["segments"]], [1205.0, 1805.0])
                 pipeline.shutdown()

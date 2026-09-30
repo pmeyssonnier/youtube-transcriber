@@ -2,7 +2,7 @@
 
 Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
 
-**Version : 1.7.1**
+**Version : 1.8.0**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -36,6 +36,7 @@ Ce n’est donc pas une transcription entièrement hors ligne. N’utilisez l’
 - exporte en JSON, Markdown, TXT, SRT et VTT avec des noms dérivés du titre ;
 - conserve la saisie des noms d’intervenants pendant l’actualisation de la liste ;
 - classe les intervenants par part de parole avec un extrait et l’heure de première intervention, fusionne les identifiants qui reçoivent le même nom ;
+- relie les intervenants d'une partie à l'autre grâce à un recouvrement entre parties (option, voir ci-dessous) ;
 - propose des noms d’intervenants par IA (bouton facultatif) : seuls de courts extraits de texte sont envoyés, chaque suggestion est justifiée par une citation et doit être validée avant enregistrement ;
 - empêche deux instances et deux traitements actifs pour la même vidéo.
 
@@ -48,7 +49,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.7.1)`.
+4. Attendez `Installation terminee (version 1.8.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -194,6 +195,18 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 | `app/static/` | interface HTML, CSS et JavaScript |
 | `tests/` | tests automatisés |
 
+## Relier les intervenants entre les parties
+
+La diarisation d'OpenAI recalcule ses étiquettes (A, B, C…) à chaque partie audio : sans aide, une même personne apparaît sous autant d'identifiants que de parties. L'option **Relier les intervenants entre les parties** (Options avancées, active en mode « Léger » par défaut) fait déborder chaque partie sur la suivante (45 s en mode léger, 3 min en mode renforcé). Les personnes qui parlent dans ce passage commun sont reconnues d'une partie à l'autre et regroupées sous un même nom (« Voix 01 », « Voix 02 »…). La transcription bascule d'une partie à l'autre à un moment de silence, sans phrase perdue ni répétée.
+
+Limites à connaître :
+
+- seules les personnes qui **parlent dans un passage commun** sont reliées : quelqu'un qui n'intervient jamais à la jonction de deux parties garde un identifiant séparé. Le gain est réel mais partiel, surtout avec beaucoup d'intervenants ;
+- le recouvrement ajoute de l'audio à transcrire (environ +4 % en mode léger, +15 % en mode renforcé) ;
+- les règles de liaison sont volontairement prudentes (recouvrement net, mutuel et majoritaire) : mieux vaut deux identifiants séparés qu'une fusion de deux personnes ;
+- le résultat est indiqué en fin de traitement (« Intervenants regroupés : 103 → 41 »). Vérifiez-le dans « Vérifier les intervenants », complétez avec la suggestion de noms par IA, et donnez le même nom aux identifiants qui restent à fusionner ;
+- les traitements déjà terminés ne sont pas modifiés.
+
 ## Mettre à jour sans tout réinstaller
 
 **Dossier cloné avec git** : `demarrer.bat` récupère lui-même la dernière version (`git pull --ff-only`) et vérifie les composants Python à chaque démarrage. En cas d'échec (modifications locales, pas de réseau), l'application démarre avec la version actuelle. Le reste de cette section concerne les copies issues d'un zip.
@@ -218,6 +231,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.8.0** : option « Relier les intervenants entre les parties » (recouvrement de 45 s ou 3 min entre parties, regroupement des voix vues ensemble dans le passage commun, « Voix 01 »…) ;
 - **1.7.1** : `demarrer.bat` met à jour automatiquement un dossier cloné avec git (`git pull --ff-only` puis vérification des composants Python) avant de démarrer ; sans git, rien ne change ;
 - **1.7.0** : yt-dlp stable par défaut (les versions de développement ne s'installent que sur demande, case dédiée dans les Paramètres) ; l'option 30 minutes est désactivée avec la distinction des intervenants (20 minutes au plus) et l'estimation des parties en tient compte ; test de mise à jour insensible aux dossiers d'outils (.ruff_cache, .vscode…) ;
 - **1.6.0** : script `METTRE_A_JOUR.bat` (mise à jour du code sans réinstaller, données conservées) ;

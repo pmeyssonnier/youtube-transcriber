@@ -6,6 +6,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
@@ -58,6 +59,7 @@ class JobRequest(BaseModel):
     inspection_id: str = Field(min_length=32, max_length=32)
     confirm_long_video: bool = False
     diarize: bool = True
+    speaker_linking: Literal["off", "light", "strong"] = "light"
     chunk_minutes: int = Field(default=10, ge=5, le=30)
     api_concurrency: int = Field(default=4, ge=1, le=6)
     cookie_browser: str | None = Field(default=None, max_length=20)
@@ -98,6 +100,7 @@ def job_summary(job: dict) -> dict:
         "message",
         "warning",
         "diarize",
+        "speaker_linking",
         "chunk_minutes",
         "api_concurrency",
         "start_seconds",
@@ -315,6 +318,7 @@ def create_job(request: JobRequest) -> dict:
         "progress": 0,
         "message": "En attente…",
         "diarize": request.diarize,
+        "speaker_linking": request.speaker_linking if request.diarize else "off",
         "chunk_minutes": request.chunk_minutes,
         "api_concurrency": request.api_concurrency,
         "cookie_browser": cookie_browser,
