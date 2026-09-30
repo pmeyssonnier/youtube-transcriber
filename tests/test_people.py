@@ -93,6 +93,7 @@ class RosterTests(unittest.TestCase):
         for spelling in ("Belkattir", "Belkatir", "Belkhatir", "Belkattire"):
             self.assertEqual(phonetic(spelling), phonetic("Belkhatir"), spelling)
         self.assertEqual(phonetic("Durand"), phonetic("Durant"))
+        self.assertEqual(phonetic("Deguide"), phonetic("Deguid"))  # « e » final puis consonne finale muette
 
 
 class AnalyzeNamesTests(unittest.TestCase):
@@ -223,6 +224,51 @@ class CueSuggestionTests(unittest.TestCase):
         self.extras.write_text("[]", encoding="utf-8")
         segments = [seg(0, "Voix 01", "Madame Durand, vous avez la parole."), seg(6, "Voix 02", "Merci.")]
         self.assertEqual(self.suggest(segments), {})
+
+
+class AliasTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.elus = Path(self.directory.name) / "elus.json"
+        self.extras = Path(self.directory.name) / "extras.json"
+        self.elus.write_text(json.dumps(ELUS + [
+            {"nom": "Chloé Deguide", "conseiller_communal": "2024-présent", "echevin": None, "bourgmestre": None, "statut": "Conseiller communal"},
+        ]), encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.directory.cleanup()
+
+    def analyze(self, text: str, with_alias: bool) -> tuple[dict, dict]:
+        self.extras.write_text(json.dumps([{"nom": "Chloé Deguide", "alias": ["Duguid"]}] if with_alias else []), encoding="utf-8")
+        segments = [seg(0, "A", text)]
+        return analyze_names(segments, date(2026, 6, 1), self.elus, self.extras), segments[0]
+
+    def test_a_confirmed_alias_is_matched_exactly_and_corrected(self) -> None:
+        result, segment = self.analyze("Madame Duguid, vous avez la parole.", with_alias=True)
+        mention = segment["mentions"][0]
+        self.assertEqual((mention["person"], mention["level"], mention["score"]), ("Chloé Deguide", "auto", 1.0))
+        self.assertEqual(segment["text_normalized"], "Madame Deguide, vous avez la parole.")
+        self.assertEqual(segment["text"], "Madame Duguid, vous avez la parole.")
+        self.assertEqual(result["summary"][0]["variantes"], {"Duguid": 1})
+
+    def test_without_the_alias_a_distorted_name_is_not_corrected_blindly(self) -> None:
+        _, segment = self.analyze("Madame Duguid, vous avez la parole.", with_alias=False)
+        self.assertNotEqual(segment["mentions"][0].get("level"), "auto")
+        self.assertNotIn("text_normalized", segment)
+
+    def test_alias_does_not_capture_other_names(self) -> None:
+        _, segment = self.analyze("Monsieur Verzin, vous avez la parole.", with_alias=True)
+        self.assertEqual(segment["mentions"][0]["person"], "Georges Verzin")
+
+    def test_aliases_are_merged_across_files_and_the_voice_is_suggested(self) -> None:
+        self.extras.write_text(json.dumps([{"nom": "Chloé Deguide", "alias": ["Duguid"], "fonctions": [{"intitule": "échevin", "du": "2025-01-01"}]}]), encoding="utf-8")
+        active, _ = load_roster(date(2026, 6, 1), self.elus, self.extras)
+        person = next(item for item in active if item.name == "Chloé Deguide")
+        self.assertEqual(person.aliases, ["Duguid"])
+        self.assertIn("échevin", person.functions)
+        segments = [seg(0, "Voix 01", "Madame Duguid, vous avez la parole."), seg(6, "Voix 02", "Merci.")]
+        found = cue_suggestions(segments, date(2026, 6, 1), self.elus, self.extras)
+        self.assertEqual(found[0]["name"], "Chloé Deguide")
 
 
 class VideoDateTests(unittest.TestCase):

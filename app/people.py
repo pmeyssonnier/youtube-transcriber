@@ -63,11 +63,12 @@ def phonetic(text: str) -> str:
     value = re.sub(r"[^a-z ]", "", strip_accents(text.lower()))
     for old, new in (
         ("sch", "s"), ("ph", "f"), ("kh", "k"), ("ck", "k"), ("eck", "ek"), ("qu", "k"), ("ch", "s"), ("eau", "o"), ("ou", "u"),
-        ("aille", "ai"), ("au", "o"), ("ay", "e"), ("ey", "e"), ("gn", "n"), ("g", "k"), ("x", "ks"), ("y", "i"), ("w", "v"),
+        ("aille", "ai"), ("au", "o"), ("ay", "e"), ("ey", "e"), ("gn", "n"), ("gue", "ge"), ("gui", "gi"), ("g", "k"), ("x", "ks"), ("y", "i"), ("w", "v"),
         ("z", "s"), ("c", "k"), ("h", ""), ("ee", "e"), ("ai", "e"), ("ei", "e"),
     ):
         value = value.replace(old, new)
     value = re.sub(r"(.)\1+", r"\1", value)
+    value = re.sub(r"e$", "", value)
     value = re.sub(r"[dtsxz]+$", "", value)
     value = re.sub(r"e$", "", value)
     return value.replace(" ", "")
@@ -108,16 +109,27 @@ class Person:
     mayor: str | None = None  # "titre" | "ff"
     mayor_impeded: bool = False  # bourgmestre en titre empêché cette année-là : le f.f. exerce
     current: bool = True
-    _forms: list[tuple[str, str, str]] = field(default_factory=list, repr=False)
+    aliases: list[str] = field(default_factory=list)  # graphies déformées confirmées par l'utilisateur
+    _forms: list[tuple[str, str, str, str]] = field(default_factory=list, repr=False)
 
     @property
     def label(self) -> str:
         return self.name
 
-    def forms(self) -> list[tuple[str, str, str]]:
+    def forms(self) -> list[tuple[str, str, str, str]]:
+        """(texte, clé phonétique, clé simple, graphie officielle à écrire en cas de correction)."""
         if not self._forms:
-            self._forms = [(text, phonetic(text), plain(text)) for text in sorted(_name_forms(self.name))]
+            official = {text: text for text in _name_forms(self.name)}
+            surname = _surname(self.name)
+            self._forms = [(text, phonetic(text), plain(text), text) for text in sorted(official)]
+            self._forms += [(alias, phonetic(alias), plain(alias), surname) for alias in self.aliases if len(plain(alias)) >= 3]
         return self._forms
+
+
+def _surname(name: str) -> str:
+    forms = sorted(_name_forms(name), key=lambda text: (len(text.split()), len(text)))
+    core = [text for text in forms if text != name]
+    return core[0] if core else name
 
 
 def _name_forms(name: str) -> set[str]:
@@ -149,6 +161,7 @@ def load_roster(
             continue
         # même personne dans deux fichiers : on cumule les fonctions
         known.functions = list(dict.fromkeys(known.functions + person.functions))
+        known.aliases = list(dict.fromkeys(known.aliases + person.aliases))
         known.president = known.president or person.president
         known.mayor = known.mayor or person.mayor
         known.mayor_impeded = known.mayor_impeded and person.mayor_impeded if known.mayor else person.mayor_impeded
@@ -167,6 +180,7 @@ def _read_entries(path: Path) -> list[dict[str, Any]]:
 
 def _person_from_entry(entry: dict[str, Any], year: int) -> Person:
     person = Person(name=clean_inline_text(entry["nom"]))
+    person.aliases = [clean_inline_text(item) for item in (entry.get("alias") or []) if clean_inline_text(item)]
     statut = str(entry.get("statut") or "")
     if any(start <= year <= end for start, end in mandate_years(entry.get("conseiller_communal"))):
         person.functions.append("conseiller communal")
@@ -233,10 +247,10 @@ class Matcher:
         ranked = []
         for person in people:
             best_score, best_form = 0.0, ""
-            for text, form_phonetic, form_plain in person.forms():
+            for _text, form_phonetic, form_plain, replacement in person.forms():
                 score = max(similarity(key_phonetic, form_phonetic), similarity(key_plain, form_plain))
                 if score > best_score:
-                    best_score, best_form = score, text
+                    best_score, best_form = score, replacement
             ranked.append((best_score, best_form, person))
         ranked.sort(key=lambda item: -item[0])
         return ranked

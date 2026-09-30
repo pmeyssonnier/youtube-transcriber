@@ -1,4 +1,4 @@
-# Versions applicatives testées pour la distribution 1.9.0.
+# Versions applicatives testées pour la distribution 1.9.1.
 # yt-dlp reste volontairement non verrouillé dans requirements.txt (version stable minimale) afin de
 # suivre les changements de YouTube. Les versions de développement ne sont installées que sur demande
 # (case « versions de développement » des Paramètres).

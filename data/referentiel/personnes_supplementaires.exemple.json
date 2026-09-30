@@ -1,4 +1,23 @@
 [
-  {"nom": "Marc Greffier", "actif": true, "fonctions": [{"intitule": "secrétaire communal"}]},
-  {"nom": "Anne Exemple", "fonctions": [{"intitule": "échevin des Finances", "du": "2025-01-01"}]}
+  {
+    "nom": "Marc Greffier",
+    "actif": true,
+    "fonctions": [
+      {
+        "intitule": "secrétaire communal"
+      }
+    ]
+  },
+  {
+    "nom": "Anne Exemple",
+    "fonctions": [
+      {
+        "intitule": "échevin des Finances",
+        "du": "2025-01-01"
+      }
+    ],
+    "alias": [
+      "Ann Example"
+    ]
+  }
 ]
