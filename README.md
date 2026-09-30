@@ -206,6 +206,12 @@ Ne sont jamais touchés : `.venv`, `.env` (clé API) et `data` (historique et fi
 
 Si le téléchargement échoue (dépôt privé, réseau filtré), téléchargez le zip depuis GitHub (*Code → Download ZIP*) et glissez-le sur `METTRE_A_JOUR.bat`.
 
+## Licence
+
+Ce projet est publié sous licence MIT — voir le fichier [LICENSE](LICENSE). © 2026 Consultora sprl.
+
+L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléchargement de vidéos YouTube aux conditions de YouTube : la licence du code ne vous donne aucun droit sur les contenus que vous traitez.
+
 ## Tests automatiques
 
 À chaque envoi sur `main` et à chaque pull request, GitHub Actions (`.github/workflows/tests.yml`) lance les tests sous Ubuntu et Windows avec Python 3.11 et 3.12, vérifie la syntaxe du JavaScript et celle des scripts PowerShell (Windows PowerShell 5.1). En local : `python -m pip install pytest` puis `python -m pytest tests`.

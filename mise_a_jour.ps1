@@ -14,7 +14,7 @@ $HealthUrl = 'http://127.0.0.1:8765/api/health'
 # Fichiers et dossiers remplaces. Ne sont JAMAIS touches : .venv, .env, data, .app.lock,
 # .sauvegarde_code. METTRE_A_JOUR.bat n'est pas remplace pendant son execution.
 $CodeItems = @(
-    'app', 'tests', 'README.md', 'VERSION', 'requirements.txt', 'constraints.txt',
+    'app', 'tests', 'README.md', 'LICENSE', 'VERSION', 'requirements.txt', 'constraints.txt',
     'run.py', 'INSTALLER.bat', 'demarrer.bat', 'installer_windows.ps1',
     'mise_a_jour.ps1', '.env.example', '.gitignore'
 )
