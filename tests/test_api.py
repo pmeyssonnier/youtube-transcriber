@@ -15,7 +15,7 @@ class ApiSecurityTests(unittest.TestCase):
         client = TestClient(app, base_url="http://localhost")
         response = client.get("/api/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.7.0")
+        self.assertEqual(response.json()["version"], "1.7.1")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("Analyser la vidéo", client.get("/").text)

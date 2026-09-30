@@ -77,6 +77,17 @@ class UpdateScriptTests(unittest.TestCase):
         for entry in (".env", ".venv/", ".sauvegarde_code/"):
             self.assertIn(entry, ignored)
 
+    def test_demarrer_updates_only_git_clones_and_never_blocks_startup(self) -> None:
+        text = (ROOT / "demarrer.bat").read_text(encoding="utf-8")
+        self.assertIn('if exist ".git"', text)  # copie issue d'un zip : pas de mise à jour git
+        self.assertIn("where git", text)
+        self.assertIn("git pull --ff-only", text)  # jamais de fusion automatique
+        self.assertNotIn("git pull origin", text)  # ne tire pas une autre branche dans la branche courante
+        self.assertIn("-r requirements.txt -c constraints.txt", text)
+        update = text.index("git pull")
+        self.assertLess(update, text.index('"run.py"') if '"run.py"' in text else text.index("run.py"))
+        self.assertIn("Demarrage", text)  # un echec de mise a jour ne bloque pas le demarrage
+
 
 if __name__ == "__main__":
     unittest.main()

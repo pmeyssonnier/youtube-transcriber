@@ -2,9 +2,9 @@
 
 Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
 
-**Version : 1.7.0**
+**Version : 1.7.1**
 
-> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.7.0 (Windows, Python 3.11+).
+> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.7.1 (Windows, Python 3.11+).
 
 ## Ce qui est local — et ce qui ne l’est pas
 
@@ -46,7 +46,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.7.0)`.
+4. Attendez `Installation terminee (version 1.7.1)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -194,6 +194,8 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 
 ## Mettre à jour sans tout réinstaller
 
+**Dossier cloné avec git** : `demarrer.bat` récupère lui-même la dernière version (`git pull --ff-only`) et vérifie les composants Python à chaque démarrage. En cas d'échec (modifications locales, pas de réseau), l'application démarre avec la version actuelle. Le reste de cette section concerne les copies issues d'un zip.
+
 1. Fermez la fenêtre noire de l'application.
 2. Double-cliquez sur `METTRE_A_JOUR.bat` : il télécharge la dernière version depuis GitHub, sauvegarde l'ancien code dans `.sauvegarde_code\` et remplace le code.
 3. Relancez `demarrer.bat`, puis faites `Ctrl+F5` dans le navigateur.
@@ -204,6 +206,7 @@ Si le téléchargement échoue (dépôt privé, réseau filtré), téléchargez 
 
 ## Historique
 
+- **1.7.1** : `demarrer.bat` met à jour automatiquement un dossier cloné avec git (`git pull --ff-only` puis vérification des composants Python) avant de démarrer ; sans git, rien ne change ;
 - **1.7.0** : yt-dlp stable par défaut (les versions de développement ne s'installent que sur demande, case dédiée dans les Paramètres) ; l'option 30 minutes est désactivée avec la distinction des intervenants (20 minutes au plus) et l'estimation des parties en tient compte ; test de mise à jour insensible aux dossiers d'outils (.ruff_cache, .vscode…) ;
 - **1.6.0** : script `METTRE_A_JOUR.bat` (mise à jour du code sans réinstaller, données conservées) ;
 - **1.5.0** : clé API et mise à jour de yt-dlp déplacées dans une fenêtre « Paramètres » (écran principal allégé, ouverture automatique tant que la clé n'est pas configurée) ;
