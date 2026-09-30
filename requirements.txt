@@ -4,4 +4,4 @@ openai>=2.8,<3
 python-dotenv>=1.1,<2
 python-multipart>=0.0.20,<1
 uvicorn[standard]>=0.35,<1
-yt-dlp[default]>=2026.9.0
+yt-dlp[default]>=2026.8.19

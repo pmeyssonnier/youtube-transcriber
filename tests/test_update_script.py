@@ -1,13 +1,38 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
 NEVER_REPLACED = {"METTRE_A_JOUR.bat", "data", ".venv", ".env", ".app.lock", ".git", ".sauvegarde_code"}
-IGNORED = {".pytest_cache", "__pycache__"}
+IGNORED = {".pytest_cache", "__pycache__", ".coverage", ".DS_Store", "Thumbs.db"}
+
+
+def shipped_names() -> set[str]:
+    """Top-level names shipped with the application.
+
+    Uses git when available, so personal or tool folders (.ruff_cache, .vscode, .coverage...)
+    never count; falls back to ignoring hidden folders and known junk otherwise.
+    """
+    try:
+        output = subprocess.run(
+            ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True, timeout=20
+        ).stdout
+        names = {line.split("/")[0] for line in output.splitlines() if line.strip()}
+        if names:
+            return names - NEVER_REPLACED
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {
+        path.name
+        for path in ROOT.iterdir()
+        if path.name not in NEVER_REPLACED
+        and path.name not in IGNORED
+        and not (path.is_dir() and path.name.startswith("."))
+    }
 
 
 def code_items() -> set[str]:
@@ -18,10 +43,21 @@ def code_items() -> set[str]:
 
 class UpdateScriptTests(unittest.TestCase):
     def test_every_shipped_file_is_replaced_by_the_update(self) -> None:
-        shipped = {
-            path.name for path in ROOT.iterdir() if path.name not in NEVER_REPLACED and path.name not in IGNORED
-        }
-        self.assertEqual(shipped - code_items(), set(), "fichier livré absent de $CodeItems : il ne serait pas mis à jour")
+        self.assertEqual(
+            shipped_names() - code_items(), set(),
+            "fichier livré absent de $CodeItems : il ne serait pas mis à jour",
+        )
+
+    def test_tool_caches_do_not_break_the_check(self) -> None:
+        for name in (".ruff_cache", ".mypy_cache", ".vscode"):
+            folder = ROOT / name
+            if folder.exists():
+                continue
+            folder.mkdir()
+            try:
+                self.assertNotIn(name, shipped_names())
+            finally:
+                folder.rmdir()
 
     def test_user_data_is_never_in_the_replaced_list(self) -> None:
         self.assertEqual(code_items() & NEVER_REPLACED, set())

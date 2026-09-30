@@ -15,7 +15,7 @@ class ApiSecurityTests(unittest.TestCase):
         client = TestClient(app, base_url="http://localhost")
         response = client.get("/api/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.6.0")
+        self.assertEqual(response.json()["version"], "1.7.0")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("Analyser la vidéo", client.get("/").text)
@@ -64,6 +64,29 @@ class ApiSecurityTests(unittest.TestCase):
             self.assertIn(element_id, dialog)
             self.assertNotIn(element_id, main)
         self.assertIn('id="openSettings"', html)
+
+    def test_diarization_limits_chunks_to_twenty_minutes(self) -> None:
+        client = TestClient(app, base_url="http://localhost")
+        metadata = {"video_identity": "euuLzgjj7z4", "title": "T", "duration": 7200.0, "uploader": None}
+        with patch("app.main.pipeline.inspect_video", return_value=metadata):
+            url = "https://youtu.be/euuLzgjj7z4"
+            with_speakers = client.post("/api/videos/inspect", json={"url": url, "chunk_minutes": 30, "diarize": True}).json()
+            without = client.post("/api/videos/inspect", json={"url": url, "chunk_minutes": 30, "diarize": False}).json()
+        self.assertEqual(with_speakers["estimated_chunks"], 6)  # 2 h / 20 min
+        self.assertEqual(without["estimated_chunks"], 4)  # 2 h / 30 min
+
+        with patch("app.main.get_openai_api_key", return_value="sk-test-key-for-unit-tests-only"):
+            response = client.post(
+                "/api/jobs",
+                json={"url": url, "inspection_id": with_speakers["inspection_id"], "chunk_minutes": 30, "diarize": True},
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("20 minutes", response.json()["detail"])
+
+    def test_page_disables_long_chunks_with_diarization(self) -> None:
+        js = TestClient(app, base_url="http://localhost").get("/app.js").text
+        self.assertIn("DIARIZE_MAX_CHUNK_MINUTES = 20", js)
+        self.assertIn("syncChunkOptions", js)
 
 
 if __name__ == "__main__":

@@ -24,8 +24,11 @@ def ytdlp_version() -> str | None:
         return None
 
 
-def update_ytdlp() -> dict[str, str | bool | None]:
+def update_ytdlp(include_dev: bool = False) -> dict[str, str | bool | None]:
     """Upgrade yt-dlp in the application's own virtual environment.
+
+    Only stable releases are considered unless ``include_dev`` is set, which allows the
+    (newer, less tested) development builds that YouTube fixes often ship in first.
 
     yt-dlp only runs in short-lived subprocesses (see the pipeline), so the
     files are never locked by the web server and the new version applies to
@@ -37,7 +40,11 @@ def update_ytdlp() -> dict[str, str | bool | None]:
         previous = ytdlp_version()
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", PACKAGE_SPEC],
+                [
+                    sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check",
+                    *(["--pre"] if include_dev else []),
+                    PACKAGE_SPEC,
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -55,6 +62,7 @@ def update_ytdlp() -> dict[str, str | bool | None]:
             "previous_version": previous,
             "version": current,
             "updated": current != previous,
+            "development_build": bool(current and ("dev" in current)),
         }
     finally:
         _update_lock.release()

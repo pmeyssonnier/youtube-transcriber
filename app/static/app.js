@@ -303,6 +303,23 @@ function setupRangeControls() {
     });
 }
 
+// ---- Distinction des intervenants : parties de 20 minutes au plus ----
+const DIARIZE_MAX_CHUNK_MINUTES = 20;
+
+function syncChunkOptions() {
+    const diarize = document.querySelector("#diarize").checked;
+    const select = document.querySelector("#chunkMinutes");
+    for (const option of select.options) {
+        const tooLong = Number(option.value) > DIARIZE_MAX_CHUNK_MINUTES;
+        option.disabled = diarize && tooLong;
+        if (tooLong) {
+            const base = `${option.value} minutes`;
+            option.textContent = diarize ? `${base} — sans distinction des intervenants` : base;
+        }
+    }
+    if (diarize && Number(select.value) > DIARIZE_MAX_CHUNK_MINUTES) select.value = String(DIARIZE_MAX_CHUNK_MINUTES);
+}
+
 function resetInspection() {
     closePreview();
     document.querySelector("#rangeStart").value = "";
@@ -615,7 +632,12 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
             message.textContent = "Analyse de la durée et du titre…";
             const inspection = await api("/api/videos/inspect", {
                 method: "POST",
-                body: JSON.stringify({ url, chunk_minutes: chunkMinutes, cookie_browser: cookieBrowser }),
+                body: JSON.stringify({
+                    url,
+                    chunk_minutes: chunkMinutes,
+                    cookie_browser: cookieBrowser,
+                    diarize: document.querySelector("#diarize").checked,
+                }),
             });
             renderInspection(inspection);
             message.textContent = "Vérifiez les informations, puis confirmez le démarrage.";
@@ -656,6 +678,12 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
     }
 });
 
+document.querySelector("#diarize").addEventListener("change", () => {
+    syncChunkOptions();
+    resetInspection();
+});
+syncChunkOptions();
+
 for (const id of ["videoUrl", "chunkMinutes", "cookieBrowser"]) {
     document.querySelector(`#${id}`).addEventListener("input", resetInspection);
 }
@@ -688,10 +716,16 @@ document.querySelector("#updateYtdlp").addEventListener("click", async (event) =
     message.className = "form-message";
     message.textContent = "Mise à jour en cours… cela peut prendre une minute.";
     try {
-        const result = await api("/api/yt-dlp/update", { method: "POST" });
+        const includeDev = document.querySelector("#ytdlpDev").checked;
+        const result = await api("/api/yt-dlp/update", {
+            method: "POST",
+            body: JSON.stringify({ include_dev: includeDev }),
+        });
+        const kind = result.development_build ? " — version de développement" : "";
         message.textContent = result.updated
-            ? `yt-dlp mis à jour : ${result.previous_version || "?"} → ${result.version}.`
-            : `yt-dlp est déjà à jour (${result.version}).`;
+            ? `yt-dlp mis à jour : ${result.previous_version || "?"} → ${result.version}${kind}.`
+            : `yt-dlp est déjà à jour (${result.version}${kind}).`
+                + (includeDev ? "" : " Cochez « versions de développement » pour chercher une version plus récente.");
         await loadYtdlpVersion();
     } catch (error) {
         message.className = "form-message error";

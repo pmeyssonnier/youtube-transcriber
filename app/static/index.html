@@ -44,7 +44,7 @@
                                 <option value="10" selected>10 minutes — recommandé</option>
                                 <option value="15">15 minutes</option>
                                 <option value="20">20 minutes</option>
-                                <option value="30">30 minutes</option>
+                                <option value="30" id="chunk30">30 minutes</option>
                             </select>
                         </label>
                     </div>
@@ -190,6 +190,10 @@
                 <p>YouTube change souvent : si un téléchargement échoue, mettez yt-dlp à jour. Version installée : <strong id="ytdlpVersion">…</strong></p>
             </div>
             <div class="ytdlp-actions">
+                <label class="speaker-filter" for="ytdlpDev">
+                    <input type="checkbox" id="ytdlpDev">
+                    Inclure les versions de développement (plus récentes, moins testées — à essayer si la version stable échoue)
+                </label>
                 <button type="button" class="button secondary" id="updateYtdlp">Mettre à jour yt-dlp</button>
                 <p class="form-message" id="ytdlpMessage" aria-live="polite"></p>
             </div>

@@ -1,6 +1,7 @@
-# Versions applicatives testées pour la distribution 1.6.0.
-# yt-dlp reste volontairement non verrouillé dans requirements.txt afin de suivre
-# les changements fréquents de YouTube lors de chaque exécution de l'installateur.
+# Versions applicatives testées pour la distribution 1.7.0.
+# yt-dlp reste volontairement non verrouillé dans requirements.txt (version stable minimale) afin de
+# suivre les changements de YouTube. Les versions de développement ne sont installées que sur demande
+# (case « versions de développement » des Paramètres).
 fastapi==0.141.1
 httpx==0.28.1
 openai==2.54.0

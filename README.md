@@ -2,9 +2,9 @@
 
 Application locale pour télécharger l’audio d’une vidéo YouTube autorisée, le découper, l’envoyer à l’API OpenAI pour transcription et produire des fichiers JSON, Markdown, texte, SRT et VTT.
 
-**Version : 1.6.0**
+**Version : 1.7.0**
 
-> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.6.0 (Windows, Python 3.11+).
+> Dépôt : https://github.com/pmeyssonnier/youtube-transcriber — code source de la version 1.7.0 (Windows, Python 3.11+).
 
 ## Ce qui est local — et ce qui ne l’est pas
 
@@ -46,7 +46,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.6.0)`.
+4. Attendez `Installation terminee (version 1.7.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -204,6 +204,7 @@ Si le téléchargement échoue (dépôt privé, réseau filtré), téléchargez 
 
 ## Historique
 
+- **1.7.0** : yt-dlp stable par défaut (les versions de développement ne s'installent que sur demande, case dédiée dans les Paramètres) ; l'option 30 minutes est désactivée avec la distinction des intervenants (20 minutes au plus) et l'estimation des parties en tient compte ; test de mise à jour insensible aux dossiers d'outils (.ruff_cache, .vscode…) ;
 - **1.6.0** : script `METTRE_A_JOUR.bat` (mise à jour du code sans réinstaller, données conservées) ;
 - **1.5.0** : clé API et mise à jour de yt-dlp déplacées dans une fenêtre « Paramètres » (écran principal allégé, ouverture automatique tant que la clé n'est pas configurée) ;
 - **1.4.0** : plage de transcription (début/fin) avec aperçu vidéo et curseurs facultatifs ; l'aperçu charge le lecteur YouTube depuis le navigateur, uniquement à la demande ;

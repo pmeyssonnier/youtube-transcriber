@@ -18,6 +18,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .config import STATIC_DIR, dependency_status, get_openai_api_key, initialize_directories, save_openai_api_key
 from .constants import (
     ACTIVE_JOB_STATUSES,
+    DIARIZATION_MAX_CHUNK_MINUTES,
     APP_NAME,
     APP_VERSION,
     DIARIZATION_MODEL,
@@ -41,9 +42,14 @@ inspections: dict[str, dict] = {}
 inspections_lock = threading.RLock()
 
 
+class YtDlpUpdateRequest(BaseModel):
+    include_dev: bool = False
+
+
 class InspectionRequest(BaseModel):
     url: str
     chunk_minutes: int = Field(default=10, ge=5, le=30)
+    diarize: bool = True
     cookie_browser: str | None = Field(default=None, max_length=20)
 
 
@@ -192,14 +198,14 @@ def ytdlp_status() -> dict:
 
 
 @app.post("/api/yt-dlp/update")
-def ytdlp_update() -> dict:
+def ytdlp_update(request: YtDlpUpdateRequest | None = None) -> dict:
     if store.unfinished():
         raise HTTPException(
             status_code=409,
             detail="Attendez la fin des traitements en cours avant de mettre à jour yt-dlp.",
         )
     try:
-        return update_ytdlp()
+        return update_ytdlp(include_dev=bool(request and request.include_dev))
     except YtDlpUpdateError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -223,7 +229,8 @@ def inspect_video(request: InspectionRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     duration = metadata.get("duration")
-    estimated_chunks = math.ceil(duration / (request.chunk_minutes * 60)) if duration else None
+    effective_minutes = min(request.chunk_minutes, DIARIZATION_MAX_CHUNK_MINUTES) if request.diarize else request.chunk_minutes
+    estimated_chunks = math.ceil(duration / (effective_minutes * 60)) if duration else None
     requires_confirmation = duration is None or duration >= LONG_VIDEO_SECONDS
     inspection_id = uuid.uuid4().hex
     inspection = {
@@ -265,6 +272,15 @@ def create_job(request: JobRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not get_openai_api_key():
         raise HTTPException(status_code=409, detail="Configurez d'abord votre clé API OpenAI.")
+
+    if request.diarize and request.chunk_minutes > DIARIZATION_MAX_CHUNK_MINUTES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Avec la distinction des intervenants, les parties sont limitées à "
+                f"{DIARIZATION_MAX_CHUNK_MINUTES} minutes."
+            ),
+        )
 
     with inspections_lock:
         _purge_expired_inspections()
