@@ -2,10 +2,13 @@ from __future__ import annotations
 
 
 APP_NAME = "youtube-transcriber"
-APP_VERSION = "1.9.2"
+APP_VERSION = "1.10.0"
 
 DIARIZATION_MODEL = "gpt-4o-transcribe-diarize"
 STANDARD_MODEL = "whisper-1"
+# Langue parlée transmise à OpenAI (ISO 639-1). Sans elle, le modèle détecte la
+# langue et traduit parfois en anglais une partie d'un débat en français.
+DEFAULT_LANGUAGE = "fr"
 # Le modèle de diarisation refuse les fichiers de plus de ~1400 s (~23 min).
 DIARIZATION_MAX_CHUNK_MINUTES = 20
 # Durée audio maximale envoyée en une fois au modèle de diarisation (recouvrement compris),

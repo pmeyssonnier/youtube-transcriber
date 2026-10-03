@@ -166,7 +166,7 @@ class PipelineRangeTests(unittest.TestCase):
                     }
                 )
                 pipeline = TranscriptionPipeline(store)
-                segment = lambda _c, _chunk, index, _d: [
+                segment = lambda _c, _chunk, index, _d, _l=None: [
                     {"start": 5.0, "end": 6.0, "speaker": "Intervenant", "text": f"p{index}", "chunk_index": index}
                 ]
                 with (

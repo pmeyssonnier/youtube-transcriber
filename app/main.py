@@ -22,6 +22,7 @@ from .constants import (
     DIARIZATION_MAX_CHUNK_MINUTES,
     APP_NAME,
     APP_VERSION,
+    DEFAULT_LANGUAGE,
     DIARIZATION_MODEL,
     INSPECTION_TTL_SECONDS,
     LONG_VIDEO_SECONDS,
@@ -60,6 +61,8 @@ class JobRequest(BaseModel):
     inspection_id: str = Field(min_length=32, max_length=32)
     confirm_long_video: bool = False
     diarize: bool = True
+    # Langue parlée (ISO 639-1) ; null : détection automatique par OpenAI.
+    language: str | None = Field(default=DEFAULT_LANGUAGE, pattern=r"^[a-z]{2}$")
     speaker_linking: Literal["off", "light", "strong"] = "light"
     chunk_minutes: int = Field(default=10, ge=5, le=30)
     api_concurrency: int = Field(default=4, ge=1, le=6)
@@ -101,6 +104,7 @@ def job_summary(job: dict) -> dict:
         "message",
         "warning",
         "diarize",
+        "language",
         "speaker_linking",
         "chunk_minutes",
         "api_concurrency",
@@ -322,6 +326,7 @@ def create_job(request: JobRequest) -> dict:
         "progress": 0,
         "message": "En attente…",
         "diarize": request.diarize,
+        "language": request.language,
         "speaker_linking": request.speaker_linking if request.diarize else "off",
         "chunk_minutes": request.chunk_minutes,
         "api_concurrency": request.api_concurrency,

@@ -56,7 +56,7 @@ class PipelineTests(unittest.TestCase):
                 maximum_active = 0
                 active_lock = threading.Lock()
 
-                def transcribe(_client, _chunk, index, _diarize):
+                def transcribe(_client, _chunk, index, _diarize, _language=None):
                     nonlocal active, maximum_active
                     with active_lock:
                         active += 1
@@ -187,6 +187,43 @@ class PipelineTests(unittest.TestCase):
                 self.assertEqual(submitted_when_failed, [False])
                 self.assertEqual(store.get(job_id)["status"], "failed")
                 pipeline.shutdown()
+
+
+class LanguageTests(unittest.TestCase):
+    """La langue parlée est transmise à OpenAI ; une partie d'une autre langue est refaite."""
+
+    def test_language_reaches_openai_and_checkpoints(self) -> None:
+        calls: list[dict] = []
+
+        class Transcriptions:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return {"segments": [{"start": 0, "end": 1, "speaker": "A", "text": "Bonsoir"}]}
+
+        class Client:
+            audio = type("Audio", (), {"transcriptions": Transcriptions()})()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline = TranscriptionPipeline(JobStore())
+            chunk = Path(tmp) / "chunk_000.mp3"
+            chunk.write_bytes(b"audio")
+            for diarize in (True, False):
+                pipeline._transcribe_chunk(Client(), chunk, 0, diarize, "fr")
+                pipeline._transcribe_chunk(Client(), chunk, 0, diarize)
+            self.assertEqual([c.get("language") for c in calls], ["fr", None, "fr", None])
+            self.assertTrue(all("language" not in c for c in calls[1::2]))
+
+            results = Path(tmp) / "results"
+            results.mkdir()
+            with patch("app.pipeline.OpenAI", return_value=Client()):
+                pipeline._transcribe_and_checkpoint(
+                    "cle", chunk, 0, True, "modele", "fr", 0.0, 60.0, pipeline._chunk_result_path(results, 0)
+                )
+            self.assertIsNotNone(pipeline._load_chunk_result(results, 0, "modele", "fr"))
+            # Partie faite en français : refaite pour une autre langue ou sans langue.
+            self.assertIsNone(pipeline._load_chunk_result(results, 0, "modele", "nl"))
+            self.assertIsNone(pipeline._load_chunk_result(results, 0, "modele"))
+            pipeline.shutdown()
 
 
 if __name__ == "__main__":
