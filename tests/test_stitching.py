@@ -235,7 +235,7 @@ class PipelineOverlapTests(unittest.TestCase):
                 (chunks_dir / "manifest.json").write_text(json.dumps({"offsets": [0.0, 1200.0]}))
                 pipeline = TranscriptionPipeline(store)
 
-                def transcribe(_client, _chunk, index, _diarize):
+                def transcribe(_client, _chunk, index, _diarize, _language=None):
                     local = [  # partie 1 : 0-1245 s ; partie 2 : démarre à 1200 s de la vidéo (0 s dans son audio)
                         [(0, 600, "P01-A"), (1200, 1230, "P01-A"), (1232, 1245, "P01-B")],
                         [(0, 31, "P02-X"), (33, 45, "P02-Y"), (46, 300, "P02-Y"), (500, 560, "P02-X")],

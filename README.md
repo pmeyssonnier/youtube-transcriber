@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.9.2**
+**Version : 1.10.0**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -34,6 +34,7 @@ Ce n’est donc pas une transcription entièrement hors ligne. N’utilisez l’
 - accélère le téléchargement par fragments simultanés ;
 - découpe l’audio avec FFmpeg, par défaut en parties de 10 minutes ;
 - transcrit jusqu’à 4 parties en parallèle par défaut, réglable de 1 à 6 ;
+- transmet la langue parlée à OpenAI (français par défaut ; néerlandais, anglais ou détection automatique au choix) : sans elle, le modèle traduisait parfois en anglais une partie d'un débat en français ;
 - distingue les intervenants avec `gpt-4o-transcribe-diarize`, en option ;
 - utilise `whisper-1` lorsque la distinction des intervenants est désactivée ;
 - sauvegarde chaque partie terminée : après une erreur ou un redémarrage, elle n’est pas refacturée ;
@@ -55,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.9.2)`.
+4. Attendez `Installation terminee (version 1.10.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -256,6 +257,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.10.0** : option « Langue parlée » (français par défaut), transmise à OpenAI pour les deux modèles ; sans langue, la séance du 10/09/2025 du Conseil communal de Schaerbeek était transcrite à 38 % en anglais. Une partie déjà transcrite dans une autre langue est refaite à la reprise ; les traitements créés avant cette version gardent la détection automatique. Champ `language` de `POST /api/jobs` (code ISO 639-1, `null` pour la détection automatique) ;
 - **1.9.2** : les titres « l'échevin(e) » déformés (« Léchine », « Leschvin »…) ne sont plus comptés comme des noms inconnus, les noms de groupes et sigles (« pour le groupe PTB ») sont ignorés, « vous avez la parole Madame X » est compris sans virgule ;
 - **1.9.1** : alias de noms confirmés (`"alias"` dans le fichier complémentaire) et phonétique affinée ;
 - **1.9.0** : noms cités et liste des élus, **à la demande seulement** (bouton « Analyser les noms cités », suggestions de noms par règles puis IA), texte d'origine conservé ;

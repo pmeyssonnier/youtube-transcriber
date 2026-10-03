@@ -215,10 +215,12 @@ class TranscriptionPipeline:
             raise PipelineError("FFmpeg n'a créé aucune partie audio.")
 
         model = DIARIZATION_MODEL if diarize else STANDARD_MODEL
+        # Les anciens traitements (champ absent) gardent la détection automatique.
+        language = job.get("language") or None
         checkpoints = {
             index: checkpoint
             for index, checkpoint in (
-                (index, self._load_chunk_result(results_dir, index, model))
+                (index, self._load_chunk_result(results_dir, index, model, language))
                 for index in range(len(chunks))
             )
             if checkpoint is not None
@@ -284,6 +286,7 @@ class TranscriptionPipeline:
                     index,
                     diarize,
                     model,
+                    language,
                     offsets[index],
                     chunk_durations[index],
                     self._chunk_result_path(results_dir, index),
@@ -642,11 +645,16 @@ class TranscriptionPipeline:
     def _chunk_result_path(results_dir: Path, index: int) -> Path:
         return results_dir / f"chunk_{index:03d}.json"
 
-    def _load_chunk_result(self, results_dir: Path, index: int, model: str) -> dict[str, Any] | None:
+    def _load_chunk_result(
+        self, results_dir: Path, index: int, model: str, language: str | None = None
+    ) -> dict[str, Any] | None:
         data = self._read_json(self._chunk_result_path(results_dir, index))
         if not data:
             return None
         if data.get("version") != 1 or data.get("chunk_index") != index or data.get("model") != model:
+            return None
+        # Une partie transcrite dans une autre langue (ou sans langue) est refaite.
+        if (data.get("language") or None) != language:
             return None
         if not isinstance(data.get("segments"), list):
             return None
@@ -664,6 +672,7 @@ class TranscriptionPipeline:
         chunk_index: int,
         diarize: bool,
         model: str,
+        language: str | None,
         offset: float,
         chunk_duration: float,
         checkpoint_path: Path,
@@ -671,7 +680,7 @@ class TranscriptionPipeline:
         """Transcribe one chunk and persist it before reporting success."""
         client = OpenAI(api_key=api_key, max_retries=5, timeout=900)
         started = time.monotonic()
-        chunk_segments = self._transcribe_chunk(client, chunk, chunk_index, diarize)
+        chunk_segments = self._transcribe_chunk(client, chunk, chunk_index, diarize, language)
         elapsed = max(0.0, time.monotonic() - started)
         absolute_segments: list[dict[str, Any]] = []
         for segment in chunk_segments:
@@ -682,6 +691,7 @@ class TranscriptionPipeline:
             "version": 1,
             "chunk_index": chunk_index,
             "model": model,
+            "language": language,
             "duration": chunk_duration,
             "processing_seconds": elapsed,
             "segments": absolute_segments,
@@ -714,7 +724,9 @@ class TranscriptionPipeline:
         chunk: Path,
         chunk_index: int,
         diarize: bool,
+        language: str | None = None,
     ) -> list[dict[str, Any]]:
+        options = {"language": language} if language else {}
         with chunk.open("rb") as audio_file:
             if diarize:
                 response = client.audio.transcriptions.create(
@@ -722,6 +734,7 @@ class TranscriptionPipeline:
                     file=audio_file,
                     response_format="diarized_json",
                     chunking_strategy="auto",
+                    **options,
                 )
                 data = response.model_dump() if hasattr(response, "model_dump") else dict(response)
                 return [
@@ -741,6 +754,7 @@ class TranscriptionPipeline:
                 file=audio_file,
                 response_format="verbose_json",
                 timestamp_granularities=["segment"],
+                **options,
             )
             data = response.model_dump() if hasattr(response, "model_dump") else dict(response)
             return [

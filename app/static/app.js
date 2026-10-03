@@ -688,6 +688,7 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
                 inspection_id: state.inspection.inspection_id,
                 confirm_long_video: document.querySelector("#confirmLong").checked,
                 diarize: document.querySelector("#diarize").checked,
+                language: document.querySelector("#language").value || null,
                 speaker_linking: document.querySelector("#diarize").checked ? document.querySelector("#speakerLinking").value : "off",
                 chunk_minutes: chunkMinutes,
                 api_concurrency: Number(document.querySelector("#apiConcurrency").value),
