@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.11.2**
+**Version : 1.12.0**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.11.2)`.
+4. Attendez `Installation terminee (version 1.12.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -123,11 +123,13 @@ data\jobs\IDENTIFIANT\
 
 ## Clé API et confidentialité
 
-La clé est conservée dans `.env` sous la forme `OPENAI_API_KEY="…"`. Elle persiste donc après un rafraîchissement de la page ou un redémarrage. Elle n’est jamais renvoyée au navigateur après enregistrement.
+La clé est conservée dans un fichier `.env` **propre à votre compte Windows, hors du dossier de l'application** : `%LOCALAPPDATA%\youtube-transcriber\.env` (par exemple `C:\Users\Pierre\AppData\Local\youtube-transcriber\.env`), sous la forme `OPENAI_API_KEY="…"`. Ce dossier n'est pas copié par OneDrive, contrairement à Documents ou Bureau. Elle persiste après un rafraîchissement de la page ou un redémarrage et n'est jamais renvoyée au navigateur après enregistrement. L'emplacement exact est affiché dans les paramètres. Sur un autre système, le fichier est dans `~/.config/youtube-transcriber/.env` ; la variable `TRANSCRIBER_ENV_FILE` (variable d'environnement, pas dans un `.env`) impose un autre chemin.
 
-Ne partagez jamais `.env`. Les fichiers de travail et l’historique restent dans `data\jobs`, mais les parties audio partent chez OpenAI pour la transcription. Le bouton **Supprimer** efface définitivement le dossier local du traitement concerné.
+**Migration automatique** : si vous aviez une clé dans l'ancien `.env` du dossier de l'application (versions avant 1.12), elle est copiée au premier démarrage dans le nouveau fichier, relue pour vérifier qu'elle est identique, puis retirée de l'ancien `.env` (les autres lignes, comme `TRANSCRIBER_DATA_DIR`, sont conservées). Si la copie échoue, rien n'est supprimé : la clé reste utilisable là où elle est et l'application l'indique. **Si l'application était dans un dossier synchronisé, une copie de l'ancien `.env` peut subsister dans l'historique des versions ou la corbeille du service : par prudence, créez une nouvelle clé sur platform.openai.com et révoquez l'ancienne.**
 
-**Dossier synchronisé (OneDrive, Dropbox, Google Drive, iCloud…)** : si l'application est rangée dans un tel dossier, `.env` (la clé) et les transcriptions sont copiés dans le cloud. L'application affiche alors un avertissement en haut de la page. Deux remèdes : déplacer l'application hors de ce dossier, ou ranger seulement les données ailleurs en ajoutant dans `.env` une ligne `TRANSCRIBER_DATA_DIR=D:\Transcriptions` (le dossier est créé au démarrage ; les traitements déjà faits se déplacent en copiant le contenu de l'ancien `data\`, y compris `referentiel`). La clé reste dans `.env`, qui est dans le dossier de l'application.
+Ne partagez jamais ce fichier `.env`. Les fichiers de travail et l’historique restent dans `data\jobs`, mais les parties audio partent chez OpenAI pour la transcription. Le bouton **Supprimer** efface définitivement le dossier local du traitement concerné.
+
+**Dossier synchronisé (OneDrive, Dropbox, Google Drive, iCloud…)** : si l'application est rangée dans un tel dossier, les transcriptions et les exports sont copiés dans le cloud (la clé, elle, n'y est plus depuis la version 1.12). L'application affiche alors un avertissement en haut de la page. Deux remèdes : déplacer l'application hors de ce dossier, ou ranger seulement les données ailleurs en ajoutant une ligne `TRANSCRIBER_DATA_DIR=D:\Transcriptions` dans le fichier `.env` de la clé (ou dans l'environnement ; le dossier est créé au démarrage ; les traitements déjà faits se déplacent en copiant le contenu de l'ancien `data\`, y compris `referentiel`). Un avertissement distinct apparaît si la clé elle-même se trouve dans un dossier synchronisé.
 
 **Protection contre les sites web** : l'interface n'accepte les actions (démarrer, supprimer, enregistrer la clé…) que si elles viennent de sa propre page, c'est-à-dire de la même origine exacte (`http://127.0.0.1:8765` ou `http://localhost:8765`, schéma, nom et port compris). Une autre page ouverte dans votre navigateur, même sur `localhost` avec un autre port, est refusée. Un script local qui n'envoie ni `Origin` ni `Sec-Fetch-Site` (curl, par exemple) reste accepté : un site web ne peut pas s'en dispenser.
 
@@ -135,7 +137,7 @@ Ne partagez jamais `.env`. Les fichiers de travail et l’historique restent dan
 
 Attendez la fin du traitement en cours avant d’installer une nouvelle version.
 
-1. Conservez `.env` et le dossier `data\jobs`.
+1. Conservez le dossier `data\jobs` (la clé, hors du dossier de l'application, n'est pas concernée).
 2. Remplacez les fichiers de l’application par ceux de la nouvelle archive.
 3. Relancez `INSTALLER.bat` : il réinstalle les versions applicatives testées et met `yt-dlp` à jour.
 
@@ -247,7 +249,7 @@ Limites à connaître :
 2. Double-cliquez sur `METTRE_A_JOUR.bat` : il télécharge la dernière version depuis GitHub, sauvegarde l'ancien code dans `.sauvegarde_code\` et remplace le code.
 3. Relancez `demarrer.bat`, puis faites `Ctrl+F5` dans le navigateur.
 
-Ne sont jamais touchés : `.venv`, `.env` (clé API) et `data` (historique et fichiers de transcription). Les composants Python ne sont réinstallés que si `requirements.txt` ou `constraints.txt` changent réellement.
+Ne sont jamais touchés : `.venv`, `.env`, `data`, et le fichier de la clé API (hors du dossier de l'application) (historique et fichiers de transcription). Les composants Python ne sont réinstallés que si `requirements.txt` ou `constraints.txt` changent réellement.
 
 **Si la mise à jour échoue, l'ancienne version est remise en place automatiquement.** Le script procède ainsi : il refuse un zip illisible, incomplet ou dont le code contient une erreur de syntaxe *avant* de toucher à quoi que ce soit ; il prépare le nouveau code à côté, déplace l'ancien dans `.mise_a_jour_en_cours\ancien`, met le nouveau en place, installe les composants Python si besoin, puis vérifie que la nouvelle version démarre (`import app.main`). À la moindre erreur (copie impossible, installation des composants échouée, nouvelle version qui ne démarre pas), il remet l'ancien code, réinstalle les anciens composants si nécessaire et affiche la cause. Si la fenêtre est fermée ou l'ordinateur coupé en plein remplacement, la prochaine exécution de `METTRE_A_JOUR.bat` commence par restaurer l'ancienne version. Chaque mise à jour garde en plus une copie de l'ancien code dans `.sauvegarde_code\<version>-<date>` et un journal dans `.sauvegarde_code\mise_a_jour.log`. Un échec de la restauration elle-même (très improbable) indique la copie à remettre à la main.
 
@@ -265,6 +267,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.12.0** : la clé API n'est plus rangée dans le dossier de l'application (réserve R4 de la vérification du 17/10/2026). Elle est enregistrée dans `%LOCALAPPDATA%\youtube-transcriber\.env`, un dossier que OneDrive et les services semblables ne synchronisent pas. Une clé déjà présente dans l'ancien `.env` est migrée automatiquement au démarrage (copie, relecture de contrôle, puis retrait de l'ancien fichier ; rien n'est supprimé si la copie échoue). Les paramètres affichent l'emplacement, la page prévient si la clé se trouve dans un dossier synchronisé, et un message unique signale la migration en conseillant de créer une nouvelle clé si l'ancienne copie a pu être synchronisée. Variable `TRANSCRIBER_ENV_FILE` pour un autre emplacement ;
 - **1.11.2** : vérification du 17/10/2026 (réserves R1, R2, R3, R5, R6). Une phrase entendue par une seule des deux parties audio à la jonction (une interjection) n'est plus perdue parce que le temps était déjà couvert : elle est remise et marquée `stitch_uncertain` quand au moins 75 % de ses mots (4 lettres et plus) ne figurent dans aucun segment conservé ; le seuil a été choisi par simulation avec des erreurs de reconnaissance (à 12 % d'erreurs : environ 0,1 mot recopié par jonction). Les cinq exports sont remis dans leur état précédent si un remplacement échoue (fichier ouvert dans un autre programme, disque plein) au lieu de laisser un mélange d'anciens et de nouveaux fichiers. Les points de sauvegarde enregistrent le SHA-256 du morceau audio et ne sont réutilisés que pour les mêmes octets (les anciens, sans empreinte, restent acceptés). Changer la date de séance d'un traitement retire du JSON, du traitement et du dossier `outputs` les noms corrigés calculés avec l'ancienne date (`mentions`, `text_normalized`, `noms_cites.csv`), le texte d'origine restant intact, et marque `names_analysis_stale` jusqu'à une nouvelle analyse. La mise à jour automatique d'un clone git (`demarrer.bat`) revient à la version précédente si les composants Python ne s'installent pas ou si la nouvelle version ne démarre pas ;
 - **1.11.1** : correctif de l'audit du 16/10/2026 (point P1-03) : la mise à jour Windows (`METTRE_A_JOUR.bat`) n'est plus destructive. Zip incomplet, illisible ou au code invalide refusé avant toute modification ; nouveau code préparé à côté puis mis en place par renommages ; vérification que la nouvelle version démarre ; restauration automatique de l'ancien code (et des anciens composants Python) au moindre échec, ou au lancement suivant si le script a été interrompu ; journal `.sauvegarde_code\mise_a_jour.log`. Les scénarios (succès, zip incomplet/corrompu/invalide, échec au milieu du remplacement, échec de `pip`, version qui ne démarre pas, mise à jour interrompue) sont testés avec PowerShell 7 et, sous Windows, Windows PowerShell 5.1 ;
 - **1.11.0** : correctifs de l'audit du 16/10/2026 (points P2-10, P2-11, P3-14). Les actions de l'interface exigent maintenant l'origine exacte du serveur (port compris) et refusent `Sec-Fetch-Site: same-site` : une page sur un autre port de `localhost` ne peut plus agir. Avertissement si l'application ou ses données sont dans un dossier OneDrive, Dropbox, Google Drive, iCloud…, et variable `TRANSCRIBER_DATA_DIR` pour ranger les données ailleurs. Le JSON exporté est versionné (`schema_version` = `1.0`, bloc `generator`), chaque segment a un `id` et un `speaker_id` stables, les métadonnées contiennent `video_id`, `language`, `diarized` ; format documenté dans `docs/format-json.md` avec son schéma, et vérifié par les tests. Tous les champs existants sont conservés. Correction d'un oubli des versions 1.10.1 à 1.10.3 : le fichier `VERSION` (lu par la mise à jour) n'avait pas suivi ; un test vérifie maintenant qu'il correspond à `APP_VERSION` ;
