@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import subprocess
 import sys
 import threading
 import time
@@ -17,7 +16,6 @@ from openai import OpenAI
 
 from .config import JOBS_DIR, get_openai_api_key
 from .constants import (
-    DIARIZATION_MAX_AUDIO_SECONDS,
     DIARIZATION_MAX_CHUNK_MINUTES,
     DIARIZATION_MODEL,
     MAX_AUDIO_FILE_BYTES,
@@ -25,13 +23,13 @@ from .constants import (
 )
 from .exporters import write_exports
 from .stitching import OVERLAP_BY_MODE, stitch_segments
+from .dates import date_metadata
+from .planning import MIN_LAST_CHUNK_SECONDS, chunk_plan, chunk_seconds_for  # noqa: F401
 from .process import ProcessStalled, run_supervised
 from .store import JobStore
 from .youtube import youtube_video_identity
 
 
-# Une dernière partie plus courte que cela est absorbée par la précédente.
-MIN_LAST_CHUNK_SECONDS = 30.0
 # Écart toléré entre un résultat sauvegardé et la partie audio attendue (arrondis, bords de segments).
 CHECKPOINT_TOLERANCE_SECONDS = 5.0
 
@@ -270,9 +268,7 @@ class TranscriptionPipeline:
         link_mode = str(job.get("speaker_linking", "off")) if diarize else "off"
         overlap = OVERLAP_BY_MODE.get(link_mode, 0.0)
         link_speakers = overlap > 0
-        chunk_seconds = chunk_minutes * 60
-        if diarize:
-            chunk_seconds = min(chunk_seconds, int(DIARIZATION_MAX_AUDIO_SECONDS - overlap))
+        chunk_seconds = chunk_seconds_for(chunk_minutes, diarize, overlap)
         chunks = self._split_audio(
             audio_path, chunks_dir, results_dir, chunk_seconds, range_start, range_end, overlap
         )
@@ -337,6 +333,7 @@ class TranscriptionPipeline:
             ),
         )
 
+        highest_chunk = max(checkpoints, default=-1) + 1
         failures: list[Exception] = []
         stop = threading.Event()
         futures: dict[Future[dict[str, Any]], int] = {}
@@ -382,12 +379,13 @@ class TranscriptionPipeline:
 
                 checkpoints[index] = checkpoint
                 completed_count += 1
+                highest_chunk = max(highest_chunk, index + 1)  # le numéro affiché ne recule jamais
                 processing_seconds += float(checkpoint.get("processing_seconds", 0))
                 self.store.update(
                     job_id,
                     progress=22 + round((completed_count / len(chunks)) * 68),
                     message=f"{completed_count} partie(s) sur {len(chunks)} sauvegardée(s)…",
-                    current_chunk=index + 1,
+                    current_chunk=highest_chunk,
                     chunks_completed=completed_count,
                     checkpointed_chunks=completed_count,
                     last_chunk_completed_at=self._now(),
@@ -436,6 +434,7 @@ class TranscriptionPipeline:
             "model": model,
             "speaker_labels_need_review": diarize,
             "stitch_uncertain_segments": stitching.get("uncertain", 0),
+            **date_metadata(job),
         }
         files = write_exports(output_dir, metadata, segments, speaker_names)
         files.append({"name": "source.m4a", "label": "Audio M4A", "kind": "source"})
@@ -646,20 +645,7 @@ class TranscriptionPipeline:
         )
         return chunks
 
-    @staticmethod
-    def _chunk_plan(span_start: float, span_end: float, seconds: int, overlap: float) -> list[tuple[float, float]]:
-        """(start, length) of every chunk: each one runs ``overlap`` seconds into the next."""
-        span = max(0.0, span_end - span_start)
-        count = max(1, math.ceil(span / seconds - 1e-9))
-        if count > 1 and span - (count - 1) * seconds < MIN_LAST_CHUNK_SECONDS:
-            count -= 1
-        plan = []
-        for index in range(count):
-            chunk_start = span_start + index * seconds
-            remaining = span_end - chunk_start
-            length = remaining if index == count - 1 else min(seconds + overlap, remaining)
-            plan.append((chunk_start, length))
-        return plan
+    _chunk_plan = staticmethod(chunk_plan)
 
     def _split_with_overlap(
         self,

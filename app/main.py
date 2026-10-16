@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import threading
 import time
 import uuid
@@ -29,7 +28,9 @@ from .constants import (
     STANDARD_MODEL,
     TERMINAL_JOB_STATUSES,
 )
+from .dates import date_metadata, reference_date, SOURCE_LABELS
 from .exporters import clean_inline_text, safe_filename_stem, write_exports
+from .planning import plan_all_modes
 from .pipeline import PipelineError, TranscriptionPipeline
 from .store import DuplicateJobError, JobStore
 from .ytdlp import YtDlpUpdateError, update_ytdlp, ytdlp_version
@@ -56,6 +57,25 @@ class InspectionRequest(BaseModel):
     cookie_browser: str | None = Field(default=None, max_length=20)
 
 
+class PlanRequest(BaseModel):
+    duration_seconds: float = Field(gt=0, le=172800)
+    chunk_minutes: int = Field(default=10, ge=5, le=30)
+    diarize: bool = True
+
+
+class SessionDateRequest(BaseModel):
+    # Date de la séance (AAAA-MM-JJ) ; null : revenir à la date de publication YouTube.
+    session_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valid_session_date(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if parse_video_date(value) is None:
+        raise HTTPException(status_code=400, detail="Date de séance invalide (format AAAA-MM-JJ).")
+    return value
+
+
 class JobRequest(BaseModel):
     url: str
     inspection_id: str = Field(min_length=32, max_length=32)
@@ -69,6 +89,8 @@ class JobRequest(BaseModel):
     cookie_browser: str | None = Field(default=None, max_length=20)
     start_seconds: float | None = Field(default=None, ge=0, le=172800)
     end_seconds: float | None = Field(default=None, ge=0, le=172800)
+    # Date réelle de la séance (utile pour une rediffusion) : choisit les élus en fonction.
+    session_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ApiKeyRequest(BaseModel):
@@ -113,7 +135,10 @@ def job_summary(job: dict) -> dict:
         "duration",
         "created_at",
         "updated_at",
+        "stage_started_at",
         "completed_at",
+        "video_date",
+        "session_date",
         "current_chunk",
         "chunk_count",
         "chunks_completed",
@@ -143,6 +168,7 @@ def _output_files(job: dict, speaker_names: dict[str, str]) -> list[dict[str, st
         "transcribed_to": job.get("end_seconds"),
         "model": DIARIZATION_MODEL if job.get("diarize") else STANDARD_MODEL,
         "speaker_labels_need_review": bool(job.get("diarize")),
+        **date_metadata(job),
     }
     files = write_exports(Path(job["output_dir"]), metadata, job.get("segments", []), speaker_names)
     if job.get("names_analysis"):
@@ -239,8 +265,8 @@ def inspect_video(request: InspectionRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     duration = metadata.get("duration")
-    effective_minutes = min(request.chunk_minutes, DIARIZATION_MAX_CHUNK_MINUTES) if request.diarize else request.chunk_minutes
-    estimated_chunks = math.ceil(duration / (effective_minutes * 60)) if duration else None
+    plans = plan_all_modes(duration, request.chunk_minutes, request.diarize) if duration else None
+    estimated_chunks = plans["off"]["chunks"] if plans else None
     requires_confirmation = duration is None or duration >= LONG_VIDEO_SECONDS
     inspection_id = uuid.uuid4().hex
     inspection = {
@@ -263,9 +289,17 @@ def inspect_video(request: InspectionRequest) -> dict:
         "uploader": metadata.get("uploader"),
         "duration": duration,
         "estimated_chunks": estimated_chunks,
+        "plans": plans,
+        "video_date": metadata.get("video_date"),
         "requires_confirmation": requires_confirmation,
         "pricing_note": "Le coût dépend du modèle et du tarif API OpenAI en vigueur.",
     }
+
+
+@app.post("/api/plan")
+def plan(request: PlanRequest) -> dict:
+    """Real number of parts and audio to send, for each overlap setting (no fixed percentages)."""
+    return {"plans": plan_all_modes(request.duration_seconds, request.chunk_minutes, request.diarize)}
 
 
 @app.get("/api/jobs")
@@ -320,6 +354,7 @@ def create_job(request: JobRequest) -> dict:
         "url": url,
         "video_identity": inspection["video_identity"],
         "video_date": inspection.get("video_date"),
+        "session_date": _valid_session_date(request.session_date),
         "title": inspection["title"],
         "duration": inspection.get("duration"),
         "status": "queued",
@@ -411,7 +446,7 @@ def suggest_speaker_names(job_id: str) -> dict:
         raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
 
     segments = job.get("segments", [])
-    video_date = parse_video_date(job.get("video_date"))
+    video_date, _ = reference_date(job)
     by_rules = cue_suggestions(segments, video_date)  # formules de passage de parole : gratuit, sans IA
     handled = {item["label"] for item in by_rules}
     contexts, skipped = naming_contexts(segments)
@@ -457,11 +492,28 @@ def analyze_job_names(job_id: str) -> dict:
             detail="Aucune liste d'élus trouvée. Placez elus_mandats.json dans le dossier data/referentiel.",
         )
     segments = job.get("segments", [])
-    analysis = analyze_names(segments, parse_video_date(job.get("video_date")))
+    used, source = reference_date(job)
+    analysis = analyze_names(segments, used)
+    analysis["stats"]["date_source"] = source
+    analysis["stats"]["date_note"] = SOURCE_LABELS[source]
     job = {**job, "segments": segments, "names_analysis": analysis}
     files = _output_files(job, job.get("speaker_names", {}))
     store.update(job_id, segments=segments, names_analysis=analysis, files=files, message="Noms cités analysés.")
     return {"stats": analysis["stats"], "files": files}
+
+
+@app.post("/api/jobs/{job_id}/session-date")
+def set_session_date(job_id: str, request: SessionDateRequest) -> dict:
+    """Correct the session date of a finished job (e.g. a rebroadcast) and refresh its exports."""
+    job = store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Traitement introuvable.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
+    session_date = _valid_session_date(request.session_date)
+    job = {**job, "session_date": session_date}
+    files = _output_files(job, job.get("speaker_names", {}))
+    return job_summary(store.update(job_id, session_date=session_date, files=files, message="Date de séance mise à jour."))
 
 
 @app.post("/api/jobs/{job_id}/speakers")

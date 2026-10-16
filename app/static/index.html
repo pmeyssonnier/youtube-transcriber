@@ -20,6 +20,7 @@
         </div>
     </header>
 
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
     <main>
         <section class="workspace">
             <section class="card new-job">
@@ -85,8 +86,8 @@
                                 <span>Relier les intervenants entre les parties</span>
                                 <select id="speakerLinking">
                                     <option value="off">Non</option>
-                                    <option value="light" selected>Léger (+4 % d’audio)</option>
-                                    <option value="strong">Renforcé (+15 % d’audio)</option>
+                                    <option value="light" selected>Léger (45 s de recouvrement)</option>
+                                    <option value="strong">Renforcé (3 min de recouvrement)</option>
                                 </select>
                             </label>
                         </div>
@@ -136,6 +137,10 @@
                                 </div>
                             </div>
                         </fieldset>
+                        <label class="session-date" for="sessionDate">Date de la séance (facultatif)
+                            <input id="sessionDate" type="date">
+                        </label>
+                        <p class="hint" id="sessionDateHint"></p>
                         <label class="long-confirmation hidden" id="longConfirmation">
                             <input id="confirmLong" type="checkbox">
                             <span>Je confirme le lancement de cette vidéo longue ou de durée inconnue et les frais API associés.</span>
@@ -168,6 +173,13 @@
                 <button class="text-button" id="closeDetails" type="button">Fermer</button>
             </div>
             <p>Les identifiants sont propres à chaque partie audio : une même personne apparaît sous plusieurs identifiants. Les voix les plus présentes sont en haut. Donnez le même nom à plusieurs identifiants pour les fusionner, puis enregistrez pour régénérer les fichiers.</p>
+            <div class="speaker-tools session-date-tools">
+                <label class="session-date" for="detailSessionDate">Date de la séance
+                    <input id="detailSessionDate" type="date">
+                </label>
+                <button class="button secondary" id="saveSessionDate" type="button">Enregistrer la date</button>
+            </div>
+            <p class="hint" id="sessionDateInfo"></p>
             <div class="speaker-tools">
                 <button class="button secondary" id="suggestNames" type="button">Suggérer des noms</button>
                 <button class="button secondary" id="analyzeNames" type="button">Analyser les noms cités</button>
