@@ -226,5 +226,76 @@ class LanguageTests(unittest.TestCase):
             pipeline.shutdown()
 
 
+class CheckpointValidationTests(unittest.TestCase):
+    """Un résultat sauvegardé n'est réutilisé que s'il est cohérent avec la partie attendue (audit P2-04)."""
+
+    def write(self, results: Path, **changes) -> TranscriptionPipeline:
+        pipeline = TranscriptionPipeline(JobStore())
+        data = {
+            "version": 1, "chunk_index": 0, "model": "m", "language": "fr", "duration": 600.0, "offset": 1200.0,
+            "segments": [
+                {"start": 1200.0, "end": 1210.0, "speaker": "P01-A", "text": "bonjour"},
+                {"start": 1210.0, "end": 1300.0, "speaker": "P01-B", "text": "merci"},
+            ],
+        }
+        data.update(changes)
+        pipeline._write_json_atomic(pipeline._chunk_result_path(results, 0), data)
+        return pipeline
+
+    def load(self, pipeline: TranscriptionPipeline, results: Path, window=(1200.0, 600.0)):
+        return pipeline._load_chunk_result(results, 0, "m", "fr", window)
+
+    def test_valid_result_is_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            results = Path(tmp)
+            pipeline = self.write(results)
+            self.assertIsNotNone(self.load(pipeline, results))
+            pipeline.shutdown()
+
+    def test_result_saved_before_the_offset_field_existed_is_still_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            results = Path(tmp)
+            pipeline = self.write(results)
+            data = pipeline._read_json(pipeline._chunk_result_path(results, 0))
+            del data["offset"]
+            pipeline._write_json_atomic(pipeline._chunk_result_path(results, 0), data)
+            self.assertIsNotNone(self.load(pipeline, results))
+            pipeline.shutdown()
+
+    def test_malformed_or_misplaced_results_are_rejected(self) -> None:
+        good = {"start": 1200.0, "end": 1210.0, "speaker": "P01-A", "text": "ok"}
+        cases = {
+            "segment non objet": {"segments": ["texte"]},
+            "texte absent": {"segments": [{"start": 1200.0, "end": 1210.0, "speaker": "x"}]},
+            "locuteur absent": {"segments": [{"start": 1200.0, "end": 1210.0, "text": "x"}]},
+            "début illisible": {"segments": [{**good, "start": "abc"}]},
+            "fin avant début": {"segments": [{**good, "start": 1210.0, "end": 1205.0}]},
+            "valeur infinie": {"segments": [{**good, "end": float("inf")}]},
+            "avant la partie": {"segments": [{**good, "start": 10.0, "end": 20.0}]},
+            "après la partie": {"segments": [{**good, "start": 5000.0, "end": 5010.0}]},
+            "désordre": {"segments": [{**good, "start": 1500.0, "end": 1510.0}, good]},
+            "autre découpage (durée)": {"duration": 300.0},
+            "autre découpage (décalage)": {"offset": 600.0},
+        }
+        for name, changes in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                results = Path(tmp)
+                pipeline = self.write(results, **changes)
+                self.assertIsNone(self.load(pipeline, results))
+                pipeline.shutdown()
+
+    def test_only_the_bad_result_is_redone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            results = Path(tmp)
+            pipeline = self.write(results)
+            second = pipeline._chunk_result_path(results, 1)
+            pipeline._write_json_atomic(second, {"version": 1, "chunk_index": 1, "model": "m", "language": "fr",
+                                                 "duration": 600.0, "segments": [{"start": "x"}]})
+            self.assertIsNotNone(self.load(pipeline, results))
+            self.assertIsNone(pipeline._load_chunk_result(results, 1, "m", "fr", (1800.0, 600.0)))
+            self.assertTrue(second.exists())  # le fichier n'est pas supprimé : seule la partie est refaite
+            pipeline.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main()

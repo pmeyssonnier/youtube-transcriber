@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.10.0**
+**Version : 1.10.1**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.10.0)`.
+4. Attendez `Installation terminee (version 1.10.1)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -182,7 +182,7 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 ## Limites connues
 
 - les étiquettes de voix sont propres à chaque partie (`P01-A`, `P02-A`, etc.) et peuvent désigner la même personne ;
-- il n’y a pas de chevauchement entre les parties : un mot placé exactement à une frontière peut être imparfait ;
+- sans « Relier les intervenants », il n’y a pas de chevauchement entre les parties : un mot placé exactement à une frontière peut être imparfait ; avec le chevauchement, les passages douteux à la jonction sont signalés (`stitch_uncertain`) ;
 - le nombre d’appels parallèles accélère l’attente réseau, mais le gain réel dépend des limites et de la charge de l’API ;
 - les vidéos privées, protégées ou soumises à des restrictions peuvent rester inaccessibles même avec les cookies ;
 - YouTube change régulièrement : relancer `INSTALLER.bat` met `yt-dlp` à jour ;
@@ -257,6 +257,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.10.1** : correctifs de l'audit du 16/10/2026 (point P1-01 et P2-04). À la jonction de deux parties, une phrase qui traverse la coupure n'est plus perdue (un cas de test perdait 20 s de parole ; sur 300 jonctions simulées la perte moyenne passe de 5,8 s à 0,06 s) ni répétée : les segments sont attribués à la partie qui en contient le plus, les passages non couverts sont remis, les doublons retirés, et les cas indécidables sont marqués `stitch_uncertain` dans le JSON. Un résultat sauvegardé n'est réutilisé que si ses segments sont valides et correspondent à la partie audio attendue ; sinon seule cette partie est refaite ;
 - **1.10.0** : option « Langue parlée » (français par défaut), transmise à OpenAI pour les deux modèles ; sans langue, la séance du 10/09/2025 du Conseil communal de Schaerbeek était transcrite à 38 % en anglais. Une partie déjà transcrite dans une autre langue est refaite à la reprise ; les traitements créés avant cette version gardent la détection automatique. Champ `language` de `POST /api/jobs` (code ISO 639-1, `null` pour la détection automatique) ;
 - **1.9.2** : les titres « l'échevin(e) » déformés (« Léchine », « Leschvin »…) ne sont plus comptés comme des noms inconnus, les noms de groupes et sigles (« pour le groupe PTB ») sont ignorés, « vous avez la parole Madame X » est compris sans virgule ;
 - **1.9.1** : alias de noms confirmés (`"alias"` dans le fichier complémentaire) et phonétique affinée ;

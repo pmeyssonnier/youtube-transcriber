@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import math
+import re
+import unicodedata
 from collections import defaultdict
+from difflib import SequenceMatcher
 from typing import Any
 
 # Recouvrement audio entre deux parties consécutives : la même parole est transcrite deux fois,
@@ -17,6 +20,105 @@ DEFAULT_LINK_MODE = "light"
 LINK_MIN_SECONDS = 2.5
 LINK_MIN_SHARE = 0.5
 MIN_ZONE_SECONDS = 0.5
+
+# Réparation des raccords : un segment écarté dont au moins cette durée n'est couverte par aucun
+# segment conservé est remis (sa parole serait perdue), puis les doublons sont retirés ; deux segments de parties différentes qui se
+# recouvrent à plus de DUPLICATE_MIN_OVERLAP et se ressemblent à plus de DUPLICATE_MIN_SIMILARITY
+# sont la même phrase transcrite deux fois.
+UNCOVERED_MIN_SECONDS = 1.0
+DUPLICATE_MIN_OVERLAP = 0.5
+DUPLICATE_MIN_SIMILARITY = 0.6
+
+_CHUNK = "_stitch_chunk"
+
+
+def _normalized(text: Any) -> str:
+    folded = unicodedata.normalize("NFD", str(text or "").lower())
+    folded = "".join(char for char in folded if unicodedata.category(char) != "Mn")
+    return " ".join(re.findall(r"\w+", folded))
+
+
+def _covered(start: float, end: float, intervals: list[tuple[float, float]]) -> float:
+    """Seconds of [start, end] lying inside already-kept speech (intervals may overlap)."""
+    pieces = sorted(
+        (max(start, low), min(end, high)) for low, high in intervals if min(end, high) > max(start, low)
+    )
+    total, cursor = 0.0, start
+    for low, high in pieces:
+        low = max(low, cursor)
+        if high > low:
+            total += high - low
+            cursor = high
+    return total
+
+
+def _rank(segment: dict[str, Any], text: str) -> tuple[float, int]:
+    return float(segment["end"]) - float(segment["start"]), len(text)
+
+
+def _repair_junctions(
+    kept: list[dict[str, Any]],
+    dropped: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Make sure the cut neither loses nor repeats speech, and flag what cannot be decided.
+
+    1. A discarded segment with seconds not covered by any kept segment is put back: those words
+       would otherwise be lost.
+    2. Segments of two different parts that overlap and read alike are the same sentence heard
+       twice: the one covering less time (then less text) is removed.
+    3. Overlapping segments that do not read alike cannot be decided: both are kept and flagged
+       ``stitch_uncertain`` for a manual check.
+    """
+    rescued = removed = 0
+    flagged: set[int] = set()
+
+    for segment in sorted(dropped, key=lambda item: float(item["start"])):
+        start, end = float(segment["start"]), float(segment["end"])
+        length = end - start
+        if length <= 0:
+            continue
+        intervals = [(float(item["start"]), float(item["end"])) for item in kept]
+        uncovered = length - _covered(start, end, intervals)
+        if uncovered < UNCOVERED_MIN_SECONDS:
+            continue
+        kept.append(segment)
+        rescued += 1
+
+    kept.sort(key=lambda item: (float(item["start"]), float(item["end"])))
+    gone: set[int] = set()
+    for position, current in enumerate(kept):
+        if id(current) in gone:
+            continue
+        current_start, current_end = float(current["start"]), float(current["end"])
+        for other in kept[position + 1:]:
+            if float(other["start"]) >= current_end:
+                break
+            if id(other) in gone or other[_CHUNK] == current[_CHUNK]:
+                continue
+            overlap = min(current_end, float(other["end"])) - float(other["start"])
+            shorter = min(current_end - current_start, float(other["end"]) - float(other["start"]))
+            if shorter <= 0 or overlap < DUPLICATE_MIN_OVERLAP * shorter:
+                continue
+            text_a, text_b = _normalized(current.get("text")), _normalized(other.get("text"))
+            if text_a and text_b and SequenceMatcher(None, text_a, text_b).ratio() >= DUPLICATE_MIN_SIMILARITY:
+                # On garde le segment qui couvre le plus de temps (aucune parole perdue), à défaut le plus complet.
+                loser = current if _rank(current, text_a) < _rank(other, text_b) else other
+                gone.add(id(loser))
+                removed += 1
+                if loser is current:
+                    break
+            else:
+                flagged.update((id(current), id(other)))
+
+    result = [item for item in kept if id(item) not in gone]
+    for item in result:
+        if id(item) in flagged:
+            item["stitch_uncertain"] = True
+    return result, {
+        "rescued": rescued,
+        "duplicates_removed": removed,
+        "uncertain": sum(1 for item in result if item.get("stitch_uncertain")),
+    }
 
 
 class _Groups:
@@ -153,16 +255,21 @@ def stitch_segments(
             cuts.append(windows[index + 1][0])
 
     kept: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
     for index, segments in enumerate(results):
         lower = cuts[index - 1] if index > 0 else -math.inf
         upper = cuts[index] if index < count - 1 else math.inf
         for segment in segments:
-            if lower <= float(segment["start"]) < upper:
-                kept.append(dict(segment))
+            # Un segment qui traverse la coupure appartient à la partie qui en contient le plus.
+            middle = (float(segment["start"]) + float(segment["end"])) / 2
+            (kept if lower <= middle < upper else dropped).append({**segment, _CHUNK: index})
+    kept, repair = _repair_junctions(kept, dropped)
+    for segment in kept:
+        segment.pop(_CHUNK, None)
 
     raw_labels = {str(segment["speaker"]) for segment in kept}
     if not relabel:
-        return kept, {"raw_labels": len(raw_labels), "voices": len(raw_labels)}
+        return kept, {"raw_labels": len(raw_labels), "voices": len(raw_labels), **repair}
 
     names: dict[str, str] = {}
     for segment in kept:
@@ -172,4 +279,4 @@ def stitch_segments(
             names[root] = f"Voix {len(names) + 1:02d}"
         segment["raw_speaker"] = raw
         segment["speaker"] = names[root]
-    return kept, {"raw_labels": len(raw_labels), "voices": len(names)}
+    return kept, {"raw_labels": len(raw_labels), "voices": len(names), **repair}

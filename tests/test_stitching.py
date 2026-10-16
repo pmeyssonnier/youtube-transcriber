@@ -98,6 +98,89 @@ class LinkingTests(unittest.TestCase):
         self.assertEqual(info["voices"], 1)
 
 
+def say(start: float, end: float, text: str, chunk: int = 0, speaker: str = "A") -> dict:
+    return {"start": start, "end": end, "speaker": speaker, "text": text, "chunk_index": chunk}
+
+
+class JunctionRepairTests(unittest.TestCase):
+    """Segments that cross the cut must neither disappear nor be heard twice (audit P1-01)."""
+
+    ZONE = [(0.0, 60.0), (40.0, 100.0)]
+
+    def texts(self, first: list[dict], second: list[dict]) -> tuple[list[str], dict]:
+        segments, info = stitch_segments([first, second], self.ZONE, relabel=False)
+        return [item["text"] for item in segments], info
+
+    def test_a_segment_crossing_the_cut_on_both_sides_is_not_lost(self) -> None:
+        # Cas de l'audit : A finit à 50 puis 50-59 ; B a un long segment 41-70. Avant : 20 s perdues.
+        first = [say(0, 50, "debut"), say(50, 59, "fin de A")]
+        second = [say(41, 70, "segment B qui couvre", 1), say(70, 100, "suite", 1)]
+        texts, info = self.texts(first, second)
+        covered = _covered_seconds(stitch_segments([first, second], self.ZONE, relabel=False)[0], 41, 70)
+        self.assertGreaterEqual(covered, 29 - 0.01)
+        self.assertEqual(texts[0], "debut")
+        self.assertEqual(texts[-1], "suite")
+        self.assertEqual(info["duplicates_removed"], 0)
+
+    def test_the_same_sentence_heard_in_both_parts_is_kept_once(self) -> None:
+        first = [say(0, 38, "debut"), say(38, 62, "la phrase longue qui traverse la coupure")]
+        second = [say(40.5, 64, "la phrase longue qui traverse la coupure", 1), say(64, 100, "suite", 1)]
+        texts, info = self.texts(first, second)
+        self.assertEqual(sum(1 for text in texts if "phrase longue" in text), 1)
+        self.assertGreaterEqual(info["duplicates_removed"], 1)
+
+    def test_two_copies_of_one_sentence_keep_the_one_covering_more_time(self) -> None:
+        first = [say(0, 30, "debut"), say(30, 58, "nous allons voter la motion")]
+        second = [say(41, 59, "nous allons voter la motion presentee par", 1), say(59, 100, "suite", 1)]
+        texts, info = self.texts(first, second)
+        self.assertEqual([text for text in texts if "voter" in text], ["nous allons voter la motion"])
+        self.assertGreaterEqual(info["duplicates_removed"], 1)
+
+    def test_overlapping_but_different_texts_are_both_kept_and_flagged(self) -> None:
+        first = [say(0, 30, "debut"), say(30, 58, "alpha beta gamma delta")]
+        second = [say(41, 59, "xxxxxx yyyyyy zzzzzz", 1), say(59, 100, "suite", 1)]
+        segments, info = stitch_segments([first, second], self.ZONE, relabel=False)
+        flagged = [item for item in segments if item.get("stitch_uncertain")]
+        self.assertGreaterEqual(len(flagged), 1)
+        self.assertEqual(info["uncertain"], len(flagged))
+
+    def test_clean_junction_has_nothing_to_repair(self) -> None:
+        first = [say(0, 20, "un"), say(20, 38, "deux")]
+        second = [say(45, 80, "trois", 1), say(80, 100, "quatre", 1)]
+        segments, info = stitch_segments([first, second], self.ZONE, relabel=False)
+        self.assertEqual([item["text"] for item in segments], ["un", "deux", "trois", "quatre"])
+        self.assertEqual((info["rescued"], info["duplicates_removed"], info["uncertain"]), (0, 0, 0))
+        self.assertTrue(all("stitch_uncertain" not in item and "_stitch_chunk" not in item for item in segments))
+
+    def test_no_speech_is_ever_lost_on_random_junctions(self) -> None:
+        rnd = random.Random(7)
+        for _ in range(300):
+            first, second = [], []
+            for target, low, high, chunk in ((first, 0.0, 60.0, 0), (second, 40.0, 100.0, 1)):
+                cursor = low
+                while cursor < high - 1:
+                    end = min(high, cursor + rnd.uniform(2, 25))
+                    words = " ".join(f"{rnd.randrange(10**6):x}" for _ in range(8))  # phrases toutes différentes
+                    target.append(say(cursor, end, words, chunk))
+                    cursor = end + rnd.choice([0, 0, rnd.uniform(0.2, 2)])
+            segments, _ = stitch_segments([first, second], self.ZONE, relabel=False)
+            self.assertGreaterEqual(
+                _covered_seconds(segments, 0, 100),
+                _covered_seconds(first + second, 0, 100) - 1.5,  # ancien algorithme : jusqu'à 24 s perdues
+            )
+
+
+def _covered_seconds(segments: list[dict], low: float, high: float) -> float:
+    intervals = sorted((max(low, s["start"]), min(high, s["end"])) for s in segments if s["end"] > low and s["start"] < high)
+    total, cursor = 0.0, low
+    for start, end in intervals:
+        start = max(start, cursor)
+        if end > start:
+            total += end - start
+            cursor = end
+    return total
+
+
 def simulate(seed: int, total: int = 2 * 3600, chunk: int = 1200, overlap: int = 45, speakers: int = 6):
     """Fake meeting: per-part diarization with shuffled labels and jittery segment boundaries."""
     rnd = random.Random(seed)
