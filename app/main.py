@@ -14,12 +14,15 @@ from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from . import config as app_config
 from .config import (
     DATA_DIR,
     STATIC_DIR,
     dependency_status,
     get_openai_api_key,
     initialize_directories,
+    key_sync_folder,
+    migration,
     save_openai_api_key,
     synced_folder_name,
 )
@@ -245,6 +248,10 @@ def health() -> dict:
         "ytdlp_version": ytdlp_version(),
         "api_key_configured": get_openai_api_key() is not None,
         "sync_folder": synced_folder_name(),
+        "key_sync_folder": key_sync_folder(),
+        "key_location": str(app_config.ENV_FILE),
+        "key_migrated": bool(migration["moved"]),
+        "key_migration_error": migration["error"],
         "data_dir": str(DATA_DIR),
     }
 

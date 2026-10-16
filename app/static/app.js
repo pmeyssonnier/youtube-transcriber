@@ -466,13 +466,28 @@ async function loadHealth() {
     try {
         const data = await api("/api/health");
         const syncNotice = document.querySelector("#syncNotice");
-        if (data.sync_folder) {
-            syncNotice.textContent = `Les fichiers de l’application sont dans un dossier ${data.sync_folder} : la clé API (.env) et les transcriptions peuvent être copiées dans le cloud. `
-                + "Déplacez l’application hors de ce dossier, ou rangez les données ailleurs avec TRANSCRIBER_DATA_DIR (voir le README).";
-            syncNotice.classList.remove("hidden");
-        } else {
-            syncNotice.classList.add("hidden");
+        const notices = [];
+        if (data.key_sync_folder) {
+            notices.push(`Votre clé API est dans un dossier ${data.key_sync_folder} et peut être copiée dans le cloud. `
+                + "Enregistrez-la à nouveau dans les paramètres : elle sera rangée dans un dossier non synchronisé. "
+                + "Par prudence, créez une nouvelle clé sur platform.openai.com et révoquez l’ancienne.");
         }
+        if (data.sync_folder) {
+            notices.push(`Les fichiers de l’application sont dans un dossier ${data.sync_folder} : les transcriptions peuvent être copiées dans le cloud. `
+                + "Déplacez l’application hors de ce dossier, ou rangez les données ailleurs avec TRANSCRIBER_DATA_DIR (voir le README).");
+        }
+        if (data.key_migration_error) {
+            notices.push(`La clé API n’a pas pu être déplacée vers un dossier non synchronisé (${data.key_migration_error}). Elle reste utilisable là où elle est.`);
+        }
+        syncNotice.textContent = notices.join(" ");
+        syncNotice.classList.toggle("hidden", notices.length === 0);
+        if (data.key_migrated && !state.keyMigratedShown) {
+            state.keyMigratedShown = true;
+            notify(`Votre clé API a été déplacée vers ${data.key_location}, hors du dossier de l’application. `
+                + "Si ce dossier était synchronisé (OneDrive…), l’ancienne copie peut subsister dans son historique : créez une nouvelle clé et révoquez l’ancienne.", "info");
+        }
+        const keyLocation = document.querySelector("#keyLocation");
+        if (keyLocation) keyLocation.textContent = `Emplacement de la clé : ${data.key_location}`;
         const missing = Object.entries(data.dependencies).filter(([, ok]) => !ok).map(([name]) => name);
         if (missing.length) {
             health.textContent = `Manquant : ${missing.join(", ")}`;
