@@ -30,6 +30,8 @@ from .youtube import youtube_video_identity
 
 # Une dernière partie plus courte que cela est absorbée par la précédente.
 MIN_LAST_CHUNK_SECONDS = 30.0
+# Écart toléré entre un résultat sauvegardé et la partie audio attendue (arrondis, bords de segments).
+CHECKPOINT_TOLERANCE_SECONDS = 5.0
 
 
 class PipelineError(RuntimeError):
@@ -214,13 +216,22 @@ class TranscriptionPipeline:
         if not chunks:
             raise PipelineError("FFmpeg n'a créé aucune partie audio.")
 
+        chunk_durations = [self._duration(chunk) for chunk in chunks]
+        offsets = self._planned_offsets(chunks_dir, len(chunks))
+        if offsets is None:
+            offsets = []
+            running_offset = float(range_start or 0.0)
+            for chunk_duration in chunk_durations:
+                offsets.append(running_offset)
+                running_offset += chunk_duration
+
         model = DIARIZATION_MODEL if diarize else STANDARD_MODEL
         # Les anciens traitements (champ absent) gardent la détection automatique.
         language = job.get("language") or None
         checkpoints = {
             index: checkpoint
             for index, checkpoint in (
-                (index, self._load_chunk_result(results_dir, index, model, language))
+                (index, self._load_chunk_result(results_dir, index, model, language, (offsets[index], chunk_durations[index])))
                 for index in range(len(chunks))
             )
             if checkpoint is not None
@@ -249,15 +260,6 @@ class TranscriptionPipeline:
             last_chunk_completed_at=self._now() if completed_count else None,
             chunk_processing_seconds_total=processing_seconds,
         )
-
-        chunk_durations = [self._duration(chunk) for chunk in chunks]
-        offsets = self._planned_offsets(chunks_dir, len(chunks))
-        if offsets is None:
-            offsets = []
-            running_offset = float(range_start or 0.0)
-            for chunk_duration in chunk_durations:
-                offsets.append(running_offset)
-                running_offset += chunk_duration
 
         api_concurrency = max(1, min(6, int(job.get("api_concurrency", 4))))
         pending_indices = [index for index in range(len(chunks)) if index not in checkpoints]
@@ -342,6 +344,7 @@ class TranscriptionPipeline:
             speaker_names=speaker_names,
             speaker_labels_raw=stitching["raw_labels"],
             speaker_labels_merged=stitching["voices"],
+            stitch_uncertain=stitching.get("uncertain", 0),
         )
 
         metadata = {
@@ -352,6 +355,7 @@ class TranscriptionPipeline:
             "transcribed_to": range_end,
             "model": model,
             "speaker_labels_need_review": diarize,
+            "stitch_uncertain_segments": stitching.get("uncertain", 0),
         }
         files = write_exports(output_dir, metadata, segments, speaker_names)
         files.append({"name": "source.m4a", "label": "Audio M4A", "kind": "source"})
@@ -359,6 +363,11 @@ class TranscriptionPipeline:
         done = "Transcription terminée."
         if link_speakers and segments:
             done += f" Intervenants regroupés entre les parties : {stitching['raw_labels']} → {stitching['voices']}."
+        if stitching.get("uncertain"):
+            done += (
+                f" {stitching['uncertain']} passage(s) à la jonction des parties sont à vérifier "
+                "(champ « stitch_uncertain » dans le JSON)."
+            )
         self.store.update(
             job_id,
             status="completed",
@@ -646,8 +655,18 @@ class TranscriptionPipeline:
         return results_dir / f"chunk_{index:03d}.json"
 
     def _load_chunk_result(
-        self, results_dir: Path, index: int, model: str, language: str | None = None
+        self,
+        results_dir: Path,
+        index: int,
+        model: str,
+        language: str | None = None,
+        window: tuple[float, float] | None = None,
     ) -> dict[str, Any] | None:
+        """Return a saved chunk result only if it is usable; otherwise that chunk alone is redone.
+
+        ``window`` is the (offset, duration) the chunk must have now: a result saved for another
+        cut of the audio, or whose segments are malformed or fall outside the chunk, is rejected.
+        """
         data = self._read_json(self._chunk_result_path(results_dir, index))
         if not data:
             return None
@@ -663,7 +682,43 @@ class TranscriptionPipeline:
                 return None
         except (TypeError, ValueError):
             return None
+        if not self._segments_valid(data, window):
+            return None
         return data
+
+    @staticmethod
+    def _segments_valid(data: dict[str, Any], window: tuple[float, float] | None) -> bool:
+        duration = float(data["duration"])
+        stored_offset = data.get("offset")  # absent dans les résultats sauvegardés avant la 1.11
+        if window is not None:
+            offset, expected_duration = window
+            if abs(duration - expected_duration) > CHECKPOINT_TOLERANCE_SECONDS:
+                return False
+            if stored_offset is not None and abs(float(stored_offset) - offset) > CHECKPOINT_TOLERANCE_SECONDS:
+                return False
+            low, high = offset, offset + expected_duration
+        elif stored_offset is not None:
+            low, high = float(stored_offset), float(stored_offset) + duration
+        else:
+            low = high = None
+        previous_start = -math.inf
+        for segment in data["segments"]:
+            if not isinstance(segment, dict) or not isinstance(segment.get("text"), str):
+                return False
+            if not isinstance(segment.get("speaker"), str):
+                return False
+            try:
+                start, end = float(segment["start"]), float(segment["end"])
+            except (KeyError, TypeError, ValueError):
+                return False
+            if not (math.isfinite(start) and math.isfinite(end)) or start < 0 or end < start:
+                return False
+            if low is not None and (start < low - CHECKPOINT_TOLERANCE_SECONDS or end > high + CHECKPOINT_TOLERANCE_SECONDS):
+                return False
+            if start < previous_start - CHECKPOINT_TOLERANCE_SECONDS:  # ordre chronologique
+                return False
+            previous_start = start
+        return True
 
     def _transcribe_and_checkpoint(
         self,
@@ -693,6 +748,7 @@ class TranscriptionPipeline:
             "model": model,
             "language": language,
             "duration": chunk_duration,
+            "offset": offset,
             "processing_seconds": elapsed,
             "segments": absolute_segments,
         }
