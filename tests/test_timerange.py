@@ -109,7 +109,7 @@ class PipelineRangeTests(unittest.TestCase):
             pipeline = TranscriptionPipeline(store)
             commands: list[list[str]] = []
 
-            def fake_run(command, message, timeout=None):
+            def fake_run(command, message, timeout=None, **kwargs):
                 commands.append(command)
                 (chunks_dir / "chunk_000.mp3").write_bytes(b"x")
                 return ""

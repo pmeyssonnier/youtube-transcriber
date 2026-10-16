@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_DIR
-from .exporters import clean_inline_text
+from .exporters import clean_inline_text, write_files_together
 
 REFERENTIEL_DIR = DATA_DIR / "referentiel"
 ELUS_FILE = REFERENTIEL_DIR / "elus_mandats.json"
@@ -427,8 +427,7 @@ def roster_available(elus_file: Path | None = None, extras_file: Path | None = N
 
 
 def write_names_csv(output_dir: Path, analysis: dict[str, Any]) -> dict[str, str]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "noms_cites.csv").write_text(names_csv(analysis), encoding="utf-8")
+    write_files_together(output_dir, {"noms_cites.csv": names_csv(analysis)})
     return {"name": "noms_cites.csv", "label": "Noms cités (CSV)"}
 
 
