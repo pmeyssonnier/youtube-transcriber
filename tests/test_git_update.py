@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,17 @@ FILES = {
     "constraints.txt": "# rien\n",
     "README.md": "v1\n",
 }
+
+
+def remove_tree(path: Path) -> None:
+    """rmtree qui vient à bout des fichiers en lecture seule de .git (Windows refuse de les supprimer)."""
+    for root, directories, files in os.walk(path):
+        for name in directories + files:
+            try:
+                os.chmod(os.path.join(root, name), stat.S_IWRITE | stat.S_IREAD)
+            except OSError:
+                pass
+    shutil.rmtree(path)
 
 
 def git(directory: Path, *args: str) -> str:
@@ -130,7 +142,7 @@ class GitUpdateCases:
         self.assertIn("impossible", result.stdout)
 
     def test_not_a_git_repository_is_ignored(self) -> None:
-        shutil.rmtree(self.user / ".git")
+        remove_tree(self.user / ".git")
         result = self.run_script()
         self.assertEqual(result.returncode, 0)
 
