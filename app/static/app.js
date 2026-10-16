@@ -46,13 +46,27 @@ function formatDuration(totalSeconds) {
 }
 
 function formatReadableDuration(totalSeconds) {
-    if (!Number.isFinite(Number(totalSeconds))) return "Durée inconnue";
+    // Number(null) vaut 0 : une durée absente ne doit pas s'afficher « 0 min 00 s ».
+    if (totalSeconds === null || totalSeconds === undefined || totalSeconds === "" || !Number.isFinite(Number(totalSeconds))) {
+        return "Durée inconnue";
+    }
     const seconds = Math.max(0, Math.round(Number(totalSeconds)));
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const remainder = seconds % 60;
     if (hours) return `${hours} h ${String(minutes).padStart(2, "0")} min`;
     return `${minutes} min ${String(remainder).padStart(2, "0")} s`;
+}
+
+// Message d'information ou d'erreur dans la page (à la place des fenêtres d’alerte bloquantes).
+let toastTimer = null;
+function notify(message, kind = "error") {
+    const toast = document.querySelector("#toast");
+    if (!toast) return;
+    toast.textContent = message;
+    toast.className = `toast ${kind}`;
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toast.classList.add("hidden"), 12000);
 }
 
 function secondsSince(value, now = Date.now()) {
@@ -69,6 +83,7 @@ function estimateRemaining(job, now = Date.now()) {
     const concurrency = Math.max(1, Number(job.api_concurrency || 1));
     if (completed < 1 || total < 1 || processingTotal <= 0) return null;
 
+    state.etaConfidence = completed >= 3 ? "" : " (très approximatif)";
     const average = processingTotal / completed;
     const remainingChunks = Math.max(0, total - completed);
     const waves = Math.ceil(remainingChunks / concurrency);
@@ -81,7 +96,7 @@ function updateLiveCounters() {
     document.querySelectorAll("[data-job-timer]").forEach((timer) => {
         const status = timer.dataset.status;
         const createdAt = timer.dataset.createdAt;
-        const updatedAt = timer.dataset.updatedAt;
+        const updatedAt = timer.dataset.stageAt || timer.dataset.updatedAt;
         const completedAt = timer.dataset.completedAt;
         if (activeStatuses.has(status)) {
             timer.textContent = `Total ${formatDuration(secondsSince(createdAt, now))} · Étape ${formatDuration(secondsSince(updatedAt, now))}`;
@@ -96,9 +111,9 @@ function updateLiveCounters() {
         const job = state.jobs.find((item) => item.id === element.dataset.jobEta);
         if (!job) return;
         const remaining = estimateRemaining(job, now);
-        if (remaining) element.textContent = `Restant estimé ${remaining}`;
+        if (remaining) element.textContent = `Restant estimé ${remaining}${state.etaConfidence || ""}`;
         else if (job.status === "transcribing") element.textContent = "Estimation après la première partie";
-        else if (activeStatuses.has(job.status)) element.textContent = "Estimation en préparation";
+        else if (activeStatuses.has(job.status)) element.textContent = "Estimation indisponible pour cette étape";
         else element.textContent = "";
     });
 }
@@ -161,6 +176,7 @@ function updateRangeSummary() {
             summary.textContent = `Durée transcrite : ${formatReadableDuration(seconds)} (${saved} % d’audio en moins).`;
         }
     }
+    refreshPlans();
     const confirmBox = document.querySelector("#longConfirmation");
     if (state.inspection && state.inspection.duration) {
         const seconds = effectiveSeconds(range);
@@ -305,6 +321,12 @@ function setupRangeControls() {
 
 // ---- Distinction des intervenants : parties de 20 minutes au plus ----
 const DIARIZE_MAX_CHUNK_MINUTES = 20;
+// Libellés avant l'analyse d'une vidéo (aucune estimation chiffrée possible).
+const STATIC_LINK_LABELS = {
+    off: "Non",
+    light: "Léger (45 s de recouvrement)",
+    strong: "Renforcé (3 min de recouvrement)",
+};
 
 function syncChunkOptions() {
     const diarize = document.querySelector("#diarize").checked;
@@ -328,18 +350,81 @@ function resetInspection() {
     document.querySelector("#rangeSummary").textContent = "";
     state.needsConfirmation = false;
     state.inspection = null;
+    state.plans = null;
+    applyPlans(null);
+    document.querySelector("#sessionDate").value = "";
     document.querySelector("#inspectionCard").classList.add("hidden");
     document.querySelector("#confirmLong").checked = false;
     updateSubmitState();
+}
+
+// ---- Parties et audio supplémentaire : valeurs calculées par le serveur, jamais des pourcentages fixes ----
+const LINK_LABELS = { off: "Non", light: "Léger", strong: "Renforcé" };
+
+function formatExtra(plan) {
+    if (!plan) return "";
+    const parts = `${plan.chunks} partie(s)`;
+    return plan.extra_seconds > 0
+        ? `+${plan.extra_percent.toLocaleString("fr-FR")} % d’audio (+${formatReadableDuration(plan.extra_seconds)}), ${parts}`
+        : parts;
+}
+
+function applyPlans(plans) {
+    state.plans = plans;
+    const select = document.querySelector("#speakerLinking");
+    for (const option of select.options) {
+        const plan = plans ? plans[option.value] : null;
+        option.textContent = plan ? `${LINK_LABELS[option.value]} — ${formatExtra(plan)}` : STATIC_LINK_LABELS[option.value];
+    }
+    updateChunkEstimate();
+}
+
+function updateChunkEstimate() {
+    const mode = document.querySelector("#diarize").checked ? document.querySelector("#speakerLinking").value : "off";
+    const plan = state.plans ? state.plans[mode] || state.plans.off : null;
+    document.querySelector("#inspectionChunks").textContent = plan ? `${plan.chunks} partie(s) prévue(s)` : "Nombre de parties inconnu";
+}
+
+let planTimer = null;
+let planRequest = 0;
+function refreshPlans() {
+    const inspection = state.inspection;
+    if (!inspection || !inspection.duration) return;
+    const range = currentRange();
+    if (rangeProblem(range)) return;
+    const seconds = effectiveSeconds(range);
+    if (!seconds || seconds >= inspection.duration - 1) {
+        applyPlans(inspection.plans);
+        return;
+    }
+    window.clearTimeout(planTimer);
+    planTimer = window.setTimeout(async () => {
+        const request = ++planRequest;
+        try {
+            const data = await api("/api/plan", {
+                method: "POST",
+                body: JSON.stringify({
+                    duration_seconds: seconds,
+                    chunk_minutes: Number(document.querySelector("#chunkMinutes").value),
+                    diarize: document.querySelector("#diarize").checked,
+                }),
+            });
+            if (request === planRequest) applyPlans(data.plans);
+        } catch (error) {
+            // L'estimation est facultative : on garde l'affichage précédent.
+        }
+    }, 250);
 }
 
 function renderInspection(data) {
     state.inspection = data;
     document.querySelector("#inspectionTitle").textContent = data.title;
     document.querySelector("#inspectionDuration").textContent = formatReadableDuration(data.duration);
-    document.querySelector("#inspectionChunks").textContent = data.estimated_chunks
-        ? `${data.estimated_chunks} partie(s) prévue(s)`
-        : "Nombre de parties inconnu";
+    applyPlans(data.plans);
+    document.querySelector("#sessionDate").value = "";
+    document.querySelector("#sessionDateHint").textContent = data.video_date
+        ? `Date de publication YouTube : ${data.video_date}. Laissez vide pour l’utiliser, ou saisissez la date réelle de la séance s’il s’agit d’une rediffusion.`
+        : "YouTube n’indique aucune date pour cette vidéo : sans date saisie, l’année en cours sera utilisée pour choisir les élus.";
     document.querySelector("#inspectionPricing").textContent = data.pricing_note;
     document.querySelector("#longConfirmation").classList.toggle("hidden", !data.requires_confirmation);
     state.needsConfirmation = data.requires_confirmation;
@@ -461,7 +546,7 @@ function renderJobs() {
                 <div class="job-status-line">
                     <p class="job-message">${escapeHtml(job.message)}</p>
                     <div class="job-times">
-                        <span class="job-timer" data-job-timer data-status="${escapeHtml(job.status)}" data-created-at="${escapeHtml(job.created_at)}" data-updated-at="${escapeHtml(job.updated_at)}" data-completed-at="${escapeHtml(job.completed_at)}"></span>
+                        <span class="job-timer" data-job-timer data-status="${escapeHtml(job.status)}" data-created-at="${escapeHtml(job.created_at)}" data-updated-at="${escapeHtml(job.updated_at)}" data-stage-at="${escapeHtml(job.stage_started_at || "")}" data-completed-at="${escapeHtml(job.completed_at)}"></span>
                         <span class="job-eta" data-job-eta="${escapeHtml(job.id)}"></span>
                     </div>
                 </div>
@@ -522,10 +607,45 @@ async function openSpeakerDetails(jobId) {
         document.querySelector("#suggestMessage").textContent = "";
         document.querySelector("#speakerMessage").textContent = "";
         renderSpeakerRows(data.speakers);
+        renderSessionDate(state.jobs.find((item) => item.id === jobId));
         card.classList.remove("hidden");
         card.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
-        window.alert(error.message);
+        notify(error.message);
+    }
+}
+
+function renderSessionDate(job) {
+    if (!job) return;
+    document.querySelector("#detailSessionDate").value = job.session_date || "";
+    const used = job.session_date
+        ? `${job.session_date} (date de séance saisie)`
+        : job.video_date
+            ? `${job.video_date} (date de publication YouTube)`
+            : "aucune date connue : l’année en cours est utilisée";
+    document.querySelector("#sessionDateInfo").textContent = `Date utilisée pour choisir les élus : ${used}.`;
+}
+
+async function saveSessionDate() {
+    const jobId = state.selectedJobId;
+    if (!jobId) return;
+    const button = document.querySelector("#saveSessionDate");
+    const message = document.querySelector("#suggestMessage");
+    button.disabled = true;
+    message.className = "form-message";
+    try {
+        const job = await api(`/api/jobs/${jobId}/session-date`, {
+            method: "POST",
+            body: JSON.stringify({ session_date: document.querySelector("#detailSessionDate").value || null }),
+        });
+        message.textContent = "Date de séance enregistrée. Relancez « Analyser les noms cités » pour en tenir compte.";
+        await loadJobs();
+        renderSessionDate(state.jobs.find((item) => item.id === job.id));
+    } catch (error) {
+        message.className = "form-message error";
+        message.textContent = error.message;
+    } finally {
+        button.disabled = false;
     }
 }
 
@@ -543,7 +663,7 @@ async function analyzeNames() {
         message.textContent = `${stats.mentions} noms cités : ${stats.reconnues} corrigés automatiquement, `
             + `${stats.a_verifier} à vérifier, ${stats.inconnues} non reconnus`
             + (stats.titres ? `, ${stats.titres} titres « l'échevin(e) » ignorés` : "")
-            + ` (liste de ${stats.elus_en_exercice} élus en exercice en ${stats.annee_reference}). `
+            + ` (liste de ${stats.elus_en_exercice} élus en exercice en ${stats.annee_reference} ; ${stats.date_note || "date inconnue"}). `
             + "Le fichier « Noms cités (CSV) » est disponible dans la liste des traitements.";
         await loadJobs();
     } catch (error) {
@@ -605,7 +725,7 @@ async function retryJob(jobId, button) {
         await api(`/api/jobs/${jobId}/retry`, { method: "POST" });
         await loadJobs();
     } catch (error) {
-        window.alert(error.message);
+        notify(error.message);
     } finally {
         button.disabled = false;
     }
@@ -619,7 +739,7 @@ async function deleteJob(jobId, button) {
         if (state.selectedJobId === jobId) closeSpeakerDetails();
         await loadJobs();
     } catch (error) {
-        window.alert(error.message);
+        notify(error.message);
         button.disabled = false;
     }
 }
@@ -695,6 +815,7 @@ document.querySelector("#jobForm").addEventListener("submit", async (event) => {
                 cookie_browser: cookieBrowser,
                 start_seconds: range.start,
                 end_seconds: range.end,
+                session_date: document.querySelector("#sessionDate").value || null,
             }),
         });
         document.querySelector("#videoUrl").value = "";
@@ -771,6 +892,8 @@ setupRangeControls();
 setupSettingsDialog();
 document.querySelector("#suggestNames").addEventListener("click", suggestNames);
 document.querySelector("#analyzeNames").addEventListener("click", analyzeNames);
+document.querySelector("#saveSessionDate").addEventListener("click", saveSessionDate);
+document.querySelector("#speakerLinking").addEventListener("change", updateChunkEstimate);
 document.querySelector("#hideMinor").addEventListener("change", applyMinorFilter);
 document.querySelector("#closeDetails").addEventListener("click", closeSpeakerDetails);
 document.querySelector("#refreshJobs").addEventListener("click", loadJobs);

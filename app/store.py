@@ -90,8 +90,11 @@ class JobStore:
             job = self.get(job_id)
             if job is None:
                 raise KeyError(job_id)
+            previous_status = job.get("status")
             job.update(changes)
             job["updated_at"] = self._now()
+            if "status" in changes and changes["status"] != previous_status:
+                job["stage_started_at"] = job["updated_at"]  # début de l'étape en cours
             self._write(job)
             return deepcopy(job)
 

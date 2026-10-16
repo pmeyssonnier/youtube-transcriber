@@ -265,3 +265,22 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .settings-section.configured .section-kicker::after { content: " · enregistrée"; color: var(--accent); }
 
 .advanced-grid .wide { grid-column: 1 / -1; }
+
+.toast {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    max-width: min(640px, calc(100vw - 32px));
+    padding: 12px 18px;
+    border-radius: 10px;
+    background: #1f2937;
+    color: #f9fafb;
+    border: 1px solid #6b7280;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.toast.error { border-color: #ef4444; }
+.toast.hidden { display: none; }
+.session-date { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; max-width: 220px; }
+.session-date-tools { align-items: flex-end; }
