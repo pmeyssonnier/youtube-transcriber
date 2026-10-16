@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.10.3**
+**Version : 1.11.0**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.10.3)`.
+4. Attendez `Installation terminee (version 1.11.0)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -114,7 +114,7 @@ data\jobs\IDENTIFIANT\
 
 | Export | Contenu |
 | --- | --- |
-| JSON | métadonnées et segments structurés |
+| JSON | métadonnées et segments structurés, au format versionné décrit dans [`docs/format-json.md`](docs/format-json.md) (schéma : [`docs/transcription.schema.json`](docs/transcription.schema.json)) |
 | Markdown | transcription lisible avec intervenants |
 | TXT | texte simple horodaté |
 | SRT | sous-titres standards |
@@ -126,6 +126,10 @@ data\jobs\IDENTIFIANT\
 La clé est conservée dans `.env` sous la forme `OPENAI_API_KEY="…"`. Elle persiste donc après un rafraîchissement de la page ou un redémarrage. Elle n’est jamais renvoyée au navigateur après enregistrement.
 
 Ne partagez jamais `.env`. Les fichiers de travail et l’historique restent dans `data\jobs`, mais les parties audio partent chez OpenAI pour la transcription. Le bouton **Supprimer** efface définitivement le dossier local du traitement concerné.
+
+**Dossier synchronisé (OneDrive, Dropbox, Google Drive, iCloud…)** : si l'application est rangée dans un tel dossier, `.env` (la clé) et les transcriptions sont copiés dans le cloud. L'application affiche alors un avertissement en haut de la page. Deux remèdes : déplacer l'application hors de ce dossier, ou ranger seulement les données ailleurs en ajoutant dans `.env` une ligne `TRANSCRIBER_DATA_DIR=D:\Transcriptions` (le dossier est créé au démarrage ; les traitements déjà faits se déplacent en copiant le contenu de l'ancien `data\`, y compris `referentiel`). La clé reste dans `.env`, qui est dans le dossier de l'application.
+
+**Protection contre les sites web** : l'interface n'accepte les actions (démarrer, supprimer, enregistrer la clé…) que si elles viennent de sa propre page, c'est-à-dire de la même origine exacte (`http://127.0.0.1:8765` ou `http://localhost:8765`, schéma, nom et port compris). Une autre page ouverte dans votre navigateur, même sur `localhost` avec un autre port, est refusée. Un script local qui n'envoie ni `Origin` ni `Sec-Fetch-Site` (curl, par exemple) reste accepté : un site web ne peut pas s'en dispenser.
 
 ## Mise à jour
 
@@ -198,7 +202,9 @@ Les tests couvrent notamment les URL, les doublons, le stockage, les exports, l�
 | `app/main.py` | API locale, sécurité et analyse préalable |
 | `app/pipeline.py` | téléchargement, découpage, parallélisme et reprise |
 | `app/store.py` | état JSON atomique des traitements |
-| `app/exporters.py` | JSON, Markdown, TXT, SRT et VTT |
+| `app/exporters.py` | JSON, Markdown, TXT, SRT et VTT (écrits ensemble) |
+| `app/contract.py` / `app/schema.py` | métadonnées et version du format JSON |
+| `docs/` | format du JSON (`format-json.md`) et son schéma |
 | `app/static/` | interface HTML, CSS et JavaScript |
 | `tests/` | tests automatisés |
 
@@ -257,6 +263,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.11.0** : correctifs de l'audit du 16/10/2026 (points P2-10, P2-11, P3-14). Les actions de l'interface exigent maintenant l'origine exacte du serveur (port compris) et refusent `Sec-Fetch-Site: same-site` : une page sur un autre port de `localhost` ne peut plus agir. Avertissement si l'application ou ses données sont dans un dossier OneDrive, Dropbox, Google Drive, iCloud…, et variable `TRANSCRIBER_DATA_DIR` pour ranger les données ailleurs. Le JSON exporté est versionné (`schema_version` = `1.0`, bloc `generator`), chaque segment a un `id` et un `speaker_id` stables, les métadonnées contiennent `video_id`, `language`, `diarized` ; format documenté dans `docs/format-json.md` avec son schéma, et vérifié par les tests. Tous les champs existants sont conservés. Correction d'un oubli des versions 1.10.1 à 1.10.3 : le fichier `VERSION` (lu par la mise à jour) n'avait pas suivi ; un test vérifie maintenant qu'il correspond à `APP_VERSION` ;
 - **1.10.3** : correctifs de l'audit du 16/10/2026 (points P2-05, P2-06, P2-07, P3-12, P3-13). Les surcoûts du recouvrement (« +4 % », « +15 % » étaient faux avec des parties de 10 minutes) et le nombre de parties sont calculés par le serveur d'après la vraie découpe, la plage choisie et le plafond de 1 300 s par requête (`POST /api/plan`, champ `plans` de l'analyse). Nouvelle **date de la séance** (facultative, modifiable après coup) : elle sert à choisir les élus en exercice à la place de la date de publication YouTube, utile pour une rediffusion ; les deux dates sont dans les métadonnées du JSON (`session_date`, `publication_date`, `reference_date_source`), et sans aucune date l'avertissement indique que l'année en cours est utilisée. Le numéro de la partie en cours ne recule plus, la durée d'« Étape » compte depuis le début réel de l'étape, l'estimation du temps restant est signalée comme très approximative avant 3 parties et « indisponible » pour le téléchargement et la préparation. Une durée absente s'affiche « Durée inconnue » (et non « 0 min 00 s »), les messages d'erreur apparaissent dans la page au lieu de fenêtres bloquantes, et le README et `constraints.txt` ne contredisent plus le code (un test vérifie la cohérence de la version) ;
 - **1.10.2** : correctifs de l'audit du 16/10/2026 (points P1-02, P2-08, P2-09). Le téléchargement et FFmpeg sont surveillés : arrêt (avec leurs processus enfants) si aucun fichier ne grossit pendant 10 min (téléchargement) ou 5 min (FFmpeg), ou au bout de 4 h / 2 h, avec un message clair (disque plein, réseau, connexion YouTube demandée…) ; « Relancer » reprend sans refaire ce qui est déjà là. Une erreur OpenAI qui se répétera à chaque partie (clé refusée, accès refusé, modèle introuvable, quota épuisé) arrête immédiatement les nouveaux appels payants et l'explique ; un échec isolé (réseau, serveur) n'arrête plus les autres parties, qui sont sauvegardées, et trois échecs passagers arrêtent le traitement. Les cinq exports sont écrits en fichiers temporaires puis mis en place ensemble : une panne en cours d'écriture ne mélange plus anciens et nouveaux fichiers ;
 - **1.10.1** : correctifs de l'audit du 16/10/2026 (point P1-01 et P2-04). À la jonction de deux parties, une phrase qui traverse la coupure n'est plus perdue (un cas de test perdait 20 s de parole ; sur 300 jonctions simulées la perte moyenne passe de 5,8 s à 0,06 s) ni répétée : les segments sont attribués à la partie qui en contient le plus, les passages non couverts sont remis, les doublons retirés, et les cas indécidables sont marqués `stitch_uncertain` dans le JSON. Un résultat sauvegardé n'est réutilisé que si ses segments sont valides et correspondent à la partie audio attendue ; sinon seule cette partie est refaite ;

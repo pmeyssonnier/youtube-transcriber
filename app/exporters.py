@@ -6,6 +6,8 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+from .schema import SCHEMA_VERSION, generator_block
+
 
 def clock(seconds: float, milliseconds: bool = False) -> str:
     """Format seconds as a human-readable timestamp."""
@@ -53,14 +55,19 @@ def write_exports(
     files: list[dict[str, str]] = []
 
     structured = {
+        "schema_version": SCHEMA_VERSION,
+        "generator": generator_block(),
         "metadata": metadata,
         "speakers": speaker_names,
         "segments": [
             {
+                # « id » et « speaker_id » restent stables quand on renomme les intervenants.
+                "id": number,
                 **segment,
+                "speaker_id": str(segment.get("speaker", "Intervenant")),
                 "speaker_name": _speaker(segment, speaker_names),
             }
-            for segment in segments
+            for number, segment in enumerate(segments, start=1)
         ],
     }
     contents: dict[str, str] = {f"{base}.json": json.dumps(structured, ensure_ascii=False, indent=2)}

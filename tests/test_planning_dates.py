@@ -165,6 +165,7 @@ class ConsistencyTests(unittest.TestCase):
         return (ROOT / name).read_text(encoding="utf-8")
 
     def test_version_is_the_same_everywhere(self) -> None:
+        self.assertEqual(self.read("VERSION").strip(), APP_VERSION)  # lu par la mise à jour Windows
         self.assertIn(f"**Version : {APP_VERSION}**", self.read("README.md"))
         self.assertIn(f"Installation terminee (version {APP_VERSION})", self.read("installer_windows.ps1"))
         history = self.read("README.md").split("## Historique", 1)[1]

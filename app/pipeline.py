@@ -23,7 +23,7 @@ from .constants import (
 )
 from .exporters import write_exports
 from .stitching import OVERLAP_BY_MODE, stitch_segments
-from .dates import date_metadata
+from .contract import job_metadata
 from .planning import MIN_LAST_CHUNK_SECONDS, chunk_plan, chunk_seconds_for  # noqa: F401
 from .process import ProcessStalled, run_supervised
 from .store import JobStore
@@ -425,17 +425,11 @@ class TranscriptionPipeline:
             stitch_uncertain=stitching.get("uncertain", 0),
         )
 
-        metadata = {
-            "title": title,
-            "source_url": job["url"],
-            "duration_seconds": duration or offset,
-            "transcribed_from": range_start,
-            "transcribed_to": range_end,
-            "model": model,
-            "speaker_labels_need_review": diarize,
-            "stitch_uncertain_segments": stitching.get("uncertain", 0),
-            **date_metadata(job),
-        }
+        metadata = job_metadata(
+            {**job, "title": title, "stitch_uncertain": stitching.get("uncertain", 0)},
+            duration=duration or offset,
+            model=model,
+        )
         files = write_exports(output_dir, metadata, segments, speaker_names)
         files.append({"name": "source.m4a", "label": "Audio M4A", "kind": "source"})
         warning = None if segments else "Aucune parole n'a été détectée dans la vidéo."

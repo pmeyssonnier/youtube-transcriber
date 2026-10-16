@@ -284,3 +284,5 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .toast.hidden { display: none; }
 .session-date { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; max-width: 220px; }
 .session-date-tools { align-items: flex-end; }
+.sync-notice { max-width: 1100px; margin: 0.75rem auto; }
+.sync-notice.hidden { display: none; }
