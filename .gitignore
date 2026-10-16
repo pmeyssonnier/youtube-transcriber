@@ -9,3 +9,4 @@ data/jobs/*
 .sauvegarde_code/
 data/referentiel/*.json
 !data/referentiel/*.exemple.json
+.mise_a_jour_en_cours/

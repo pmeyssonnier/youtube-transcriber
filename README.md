@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.11.0**
+**Version : 1.11.1**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.11.0)`.
+4. Attendez `Installation terminee (version 1.11.1)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -249,6 +249,8 @@ Limites à connaître :
 
 Ne sont jamais touchés : `.venv`, `.env` (clé API) et `data` (historique et fichiers de transcription). Les composants Python ne sont réinstallés que si `requirements.txt` ou `constraints.txt` changent réellement.
 
+**Si la mise à jour échoue, l'ancienne version est remise en place automatiquement.** Le script procède ainsi : il refuse un zip illisible, incomplet ou dont le code contient une erreur de syntaxe *avant* de toucher à quoi que ce soit ; il prépare le nouveau code à côté, déplace l'ancien dans `.mise_a_jour_en_cours\ancien`, met le nouveau en place, installe les composants Python si besoin, puis vérifie que la nouvelle version démarre (`import app.main`). À la moindre erreur (copie impossible, installation des composants échouée, nouvelle version qui ne démarre pas), il remet l'ancien code, réinstalle les anciens composants si nécessaire et affiche la cause. Si la fenêtre est fermée ou l'ordinateur coupé en plein remplacement, la prochaine exécution de `METTRE_A_JOUR.bat` commence par restaurer l'ancienne version. Chaque mise à jour garde en plus une copie de l'ancien code dans `.sauvegarde_code\<version>-<date>` et un journal dans `.sauvegarde_code\mise_a_jour.log`. Un échec de la restauration elle-même (très improbable) indique la copie à remettre à la main.
+
 Si le téléchargement échoue (dépôt privé, réseau filtré), téléchargez le zip depuis GitHub (*Code → Download ZIP*) et glissez-le sur `METTRE_A_JOUR.bat`.
 
 ## Licence
@@ -263,6 +265,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.11.1** : correctif de l'audit du 16/10/2026 (point P1-03) : la mise à jour Windows (`METTRE_A_JOUR.bat`) n'est plus destructive. Zip incomplet, illisible ou au code invalide refusé avant toute modification ; nouveau code préparé à côté puis mis en place par renommages ; vérification que la nouvelle version démarre ; restauration automatique de l'ancien code (et des anciens composants Python) au moindre échec, ou au lancement suivant si le script a été interrompu ; journal `.sauvegarde_code\mise_a_jour.log`. Les scénarios (succès, zip incomplet/corrompu/invalide, échec au milieu du remplacement, échec de `pip`, version qui ne démarre pas, mise à jour interrompue) sont testés avec PowerShell 7 et, sous Windows, Windows PowerShell 5.1 ;
 - **1.11.0** : correctifs de l'audit du 16/10/2026 (points P2-10, P2-11, P3-14). Les actions de l'interface exigent maintenant l'origine exacte du serveur (port compris) et refusent `Sec-Fetch-Site: same-site` : une page sur un autre port de `localhost` ne peut plus agir. Avertissement si l'application ou ses données sont dans un dossier OneDrive, Dropbox, Google Drive, iCloud…, et variable `TRANSCRIBER_DATA_DIR` pour ranger les données ailleurs. Le JSON exporté est versionné (`schema_version` = `1.0`, bloc `generator`), chaque segment a un `id` et un `speaker_id` stables, les métadonnées contiennent `video_id`, `language`, `diarized` ; format documenté dans `docs/format-json.md` avec son schéma, et vérifié par les tests. Tous les champs existants sont conservés. Correction d'un oubli des versions 1.10.1 à 1.10.3 : le fichier `VERSION` (lu par la mise à jour) n'avait pas suivi ; un test vérifie maintenant qu'il correspond à `APP_VERSION` ;
 - **1.10.3** : correctifs de l'audit du 16/10/2026 (points P2-05, P2-06, P2-07, P3-12, P3-13). Les surcoûts du recouvrement (« +4 % », « +15 % » étaient faux avec des parties de 10 minutes) et le nombre de parties sont calculés par le serveur d'après la vraie découpe, la plage choisie et le plafond de 1 300 s par requête (`POST /api/plan`, champ `plans` de l'analyse). Nouvelle **date de la séance** (facultative, modifiable après coup) : elle sert à choisir les élus en exercice à la place de la date de publication YouTube, utile pour une rediffusion ; les deux dates sont dans les métadonnées du JSON (`session_date`, `publication_date`, `reference_date_source`), et sans aucune date l'avertissement indique que l'année en cours est utilisée. Le numéro de la partie en cours ne recule plus, la durée d'« Étape » compte depuis le début réel de l'étape, l'estimation du temps restant est signalée comme très approximative avant 3 parties et « indisponible » pour le téléchargement et la préparation. Une durée absente s'affiche « Durée inconnue » (et non « 0 min 00 s »), les messages d'erreur apparaissent dans la page au lieu de fenêtres bloquantes, et le README et `constraints.txt` ne contredisent plus le code (un test vérifie la cohérence de la version) ;
 - **1.10.2** : correctifs de l'audit du 16/10/2026 (points P1-02, P2-08, P2-09). Le téléchargement et FFmpeg sont surveillés : arrêt (avec leurs processus enfants) si aucun fichier ne grossit pendant 10 min (téléchargement) ou 5 min (FFmpeg), ou au bout de 4 h / 2 h, avec un message clair (disque plein, réseau, connexion YouTube demandée…) ; « Relancer » reprend sans refaire ce qui est déjà là. Une erreur OpenAI qui se répétera à chaque partie (clé refusée, accès refusé, modèle introuvable, quota épuisé) arrête immédiatement les nouveaux appels payants et l'explique ; un échec isolé (réseau, serveur) n'arrête plus les autres parties, qui sont sauvegardées, et trois échecs passagers arrêtent le traitement. Les cinq exports sont écrits en fichiers temporaires puis mis en place ensemble : une panne en cours d'écriture ne mélange plus anciens et nouveaux fichiers ;
