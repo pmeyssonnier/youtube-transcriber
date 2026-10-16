@@ -187,11 +187,17 @@ class DurationFormatTests(unittest.TestCase):
         js = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         start = js.index("function formatReadableDuration")
         end = js.index("\n}\n", start) + 3
+        # Fichier UTF-8 en entrée et sortie en ASCII (\\uXXXX) : le résultat ne dépend pas de l'encodage
+        # de la console (sous Windows, « é » arrivait déformé).
         script = js[start:end] + (
             "\nconst out = [null, undefined, '', 'abc', 0, 65, 3725].map(formatReadableDuration);"
-            "\nconsole.log(JSON.stringify(out));"
+            "\nconsole.log(JSON.stringify(out).replace(/[^\\x00-\\x7f]/g,"
+            " (c) => '\\\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')));"
         )
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True, timeout=30)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "duree.js"
+            path.write_text(script, encoding="utf-8")
+            result = subprocess.run(["node", str(path)], capture_output=True, text=True, encoding="ascii", check=True, timeout=30)
         self.assertEqual(
             json.loads(result.stdout),
             ["Durée inconnue", "Durée inconnue", "Durée inconnue", "Durée inconnue", "0 min 00 s", "1 min 05 s", "1 h 02 min"],
