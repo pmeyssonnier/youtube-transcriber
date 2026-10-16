@@ -27,7 +27,7 @@ def remove_tree(path: Path) -> None:
     for root, directories, files in os.walk(path):
         for name in directories + files:
             try:
-                os.chmod(os.path.join(root, name), stat.S_IWRITE | stat.S_IREAD)
+                os.chmod(os.path.join(root, name), stat.S_IRWXU)  # fichiers ET dossiers (le droit d'entrer dans un dossier compte)
             except OSError:
                 pass
     shutil.rmtree(path)
