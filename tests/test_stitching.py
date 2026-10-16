@@ -257,7 +257,7 @@ class PipelineOverlapTests(unittest.TestCase):
             pipeline = TranscriptionPipeline(JobStore())
             commands: list[list[str]] = []
 
-            def fake_run(command, message, timeout=None):
+            def fake_run(command, message, timeout=None, **kwargs):
                 commands.append(command)
                 Path(command[-1]).write_bytes(b"x")
                 return ""

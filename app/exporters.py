@@ -63,9 +63,8 @@ def write_exports(
             for segment in segments
         ],
     }
-    json_path = output_dir / f"{base}.json"
-    json_path.write_text(json.dumps(structured, ensure_ascii=False, indent=2), encoding="utf-8")
-    files.append({"name": json_path.name, "label": "JSON structuré"})
+    contents: dict[str, str] = {f"{base}.json": json.dumps(structured, ensure_ascii=False, indent=2)}
+    files.append({"name": f"{base}.json", "label": "JSON structuré"})
 
     title = clean_inline_text(metadata.get("title") or "Transcription")
     markdown_lines = [
@@ -111,8 +110,29 @@ def write_exports(
         ("srt", "\n".join(srt_lines), "Sous-titres SRT"),
         ("vtt", "\n".join(vtt_lines), "Sous-titres VTT"),
     ):
-        path = output_dir / f"{base}.{suffix}"
-        path.write_text(content, encoding="utf-8")
-        files.append({"name": path.name, "label": label})
+        contents[f"{base}.{suffix}"] = content
+        files.append({"name": f"{base}.{suffix}", "label": label})
 
+    write_files_together(output_dir, contents)
     return files
+
+
+def write_files_together(directory: Path, contents: dict[str, str]) -> None:
+    """Write several files so that a failure never leaves a mix of old and new versions.
+
+    Everything is first written to temporary files next to the final ones (an error here changes
+    nothing); only then are the files swapped into place, one atomic replacement each.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    temporary: dict[str, Path] = {}
+    try:
+        for name, content in contents.items():
+            path = directory / f".{name}.tmp"
+            path.write_text(content, encoding="utf-8")
+            temporary[name] = path
+        for name, path in list(temporary.items()):
+            path.replace(directory / name)
+            del temporary[name]
+    finally:
+        for path in temporary.values():
+            path.unlink(missing_ok=True)

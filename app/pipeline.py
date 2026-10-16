@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import openai
 from openai import OpenAI
 
 from .config import JOBS_DIR, get_openai_api_key
@@ -24,6 +25,7 @@ from .constants import (
 )
 from .exporters import write_exports
 from .stitching import OVERLAP_BY_MODE, stitch_segments
+from .process import ProcessStalled, run_supervised
 from .store import JobStore
 from .youtube import youtube_video_identity
 
@@ -34,8 +36,69 @@ MIN_LAST_CHUNK_SECONDS = 30.0
 CHECKPOINT_TOLERANCE_SECONDS = 5.0
 
 
+# Surveillance des programmes externes : arrêt si rien n'est écrit pendant ce délai, ou au bout du délai maximal.
+DOWNLOAD_IDLE_SECONDS = 600.0
+DOWNLOAD_MAX_SECONDS = 4 * 3600.0
+FFMPEG_IDLE_SECONDS = 300.0
+FFMPEG_MAX_SECONDS = 2 * 3600.0
+FFMPEG_CHUNK_MAX_SECONDS = 900.0
+FFPROBE_MAX_SECONDS = 60.0
+
+_DIAGNOSTICS = (
+    (("no space left", "espace insuffisant", "not enough space", "disk full", "errno 28"),
+     "Le disque est plein : libérez de la place (dossier data\\jobs) puis cliquez sur « Relancer »."),
+    (("sign in to confirm", "confirm you", "not a bot"),
+     "YouTube demande une connexion : choisissez votre navigateur dans « Cookies » (paramètres) puis relancez."),
+    (("private video", "video unavailable", "this video is not available", "members-only", "age-restricted"),
+     "Vidéo privée, indisponible ou réservée : un navigateur connecté (cookies) peut être nécessaire."),
+    (("http error 403", "http error 429", "too many requests"),
+     "YouTube a refusé ou limité l'accès. Mettez yt-dlp à jour (bouton dédié) ou réessayez plus tard."),
+    (("getaddrinfo", "name or service not known", "temporary failure in name resolution",
+      "connection reset", "connection refused", "network is unreachable", "timed out", "unable to download"),
+     "Problème de réseau : vérifiez la connexion Internet puis cliquez sur « Relancer »."),
+)
+
+
+def _diagnose(details: str) -> str:
+    lowered = details.lower()
+    for patterns, message in _DIAGNOSTICS:
+        if any(pattern in lowered for pattern in patterns):
+            return message
+    return ""
+
+
+def _minutes(seconds: float) -> str:
+    return f"{max(1, round(seconds / 60))} min" if seconds >= 90 else f"{round(seconds)} s"
+
+
 class PipelineError(RuntimeError):
     """Error with a message suitable for the local user interface."""
+
+
+class RunAborted(RuntimeError):
+    """A chunk was not started because the run is already stopping."""
+
+
+# Après ce nombre d'échecs passagers (réseau, serveur), on arrête d'en lancer d'autres.
+MAX_TRANSIENT_FAILURES = 3
+
+
+def classify_api_error(exc: BaseException) -> tuple[str, bool]:
+    """Return (message for the user, fatal). A fatal error will repeat on every chunk: stop at once."""
+    if isinstance(exc, openai.AuthenticationError):
+        return "La clé API OpenAI est refusée (invalide ou révoquée). Vérifiez-la dans les paramètres.", True
+    if isinstance(exc, openai.PermissionDeniedError):
+        return "Cette clé API n'a pas accès au modèle ou à la région demandés.", True
+    if isinstance(exc, openai.NotFoundError):
+        return "Le modèle de transcription demandé n'est pas disponible pour cette clé API.", True
+    if isinstance(exc, openai.RateLimitError):
+        code = str(getattr(exc, "code", "") or "").lower()
+        if code == "insufficient_quota" or "insufficient_quota" in str(exc).lower() or "quota" in str(exc).lower():
+            return "Le crédit ou le quota OpenAI est épuisé : rechargez le compte puis cliquez sur « Relancer ».", True
+        return "OpenAI limite le débit des requêtes (trop d'appels simultanés). Réduisez le nombre d'appels parallèles.", False
+    if isinstance(exc, (openai.APIConnectionError, openai.APITimeoutError)):
+        return "La connexion à OpenAI a échoué (réseau).", False
+    return str(exc), False
 
 
 class TranscriptionPipeline:
@@ -275,6 +338,7 @@ class TranscriptionPipeline:
         )
 
         failures: list[Exception] = []
+        stop = threading.Event()
         futures: dict[Future[dict[str, Any]], int] = {}
         with ThreadPoolExecutor(
             max_workers=min(api_concurrency, max(1, len(pending_indices))),
@@ -292,17 +356,27 @@ class TranscriptionPipeline:
                     offsets[index],
                     chunk_durations[index],
                     self._chunk_result_path(results_dir, index),
+                    stop,
                 )
                 futures[future] = index
 
             for future in as_completed(futures):
                 index = futures[future]
+                if future.cancelled():
+                    continue
                 try:
                     checkpoint = future.result()
+                except RunAborted:
+                    continue
                 except Exception as exc:  # noqa: BLE001 - preserve successful checkpoints
                     failures.append(exc)
-                    for other in futures:
-                        if other is not future:
+                    # Une erreur qui se répétera à chaque partie (clé refusée, quota épuisé), ou des
+                    # échecs passagers répétés : on ne lance plus d'appel payant. Les parties déjà
+                    # en cours se terminent et sont sauvegardées. Un échec isolé n'arrête pas les autres.
+                    transient = sum(1 for item in failures if not classify_api_error(item)[1])
+                    if classify_api_error(exc)[1] or transient >= MAX_TRANSIENT_FAILURES:
+                        stop.set()
+                        for other in futures:
                             other.cancel()
                     continue
 
@@ -321,7 +395,13 @@ class TranscriptionPipeline:
                 )
 
         if failures:
-            raise PipelineError(f"Une partie n'a pas pu être transcrite : {failures[0]}") from failures[0]
+            explained = [classify_api_error(item) for item in failures]
+            reason = next((text for text, fatal in explained if fatal), explained[0][0])
+            raise PipelineError(
+                f"Une partie n'a pas pu être transcrite : {reason}\n"
+                f"{completed_count} partie(s) sur {len(chunks)} sont sauvegardées ; "
+                "« Relancer » reprend sans refaire celles-ci."
+            ) from failures[0]
 
         results: list[list[dict[str, Any]]] = []
         for index in range(len(chunks)):
@@ -389,24 +469,30 @@ class TranscriptionPipeline:
         command: list[str],
         failure_message: str,
         timeout: float | None = None,
+        *,
+        watch: Path | None = None,
+        idle_timeout: float | None = None,
     ) -> str:
+        """Run a program; stop it if it exceeds ``timeout`` or writes nothing in ``watch`` for ``idle_timeout``."""
         try:
-            result = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-            )
+            result = run_supervised(command, timeout=timeout, idle_timeout=idle_timeout, watch=watch)
         except FileNotFoundError as exc:
             raise PipelineError(f"Programme introuvable : {command[0]}") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise PipelineError(f"{failure_message}\nDélai d'attente dépassé.") from exc
+        except ProcessStalled as exc:
+            if exc.kind == "idle":
+                reason = (
+                    f"Aucune progression depuis {_minutes(exc.seconds)} : le traitement semble bloqué "
+                    "et a été arrêté. Cliquez sur « Relancer » : ce qui est déjà téléchargé ou "
+                    "préparé est conservé."
+                )
+            else:
+                reason = f"Délai maximal dépassé ({_minutes(exc.seconds)}) ; le traitement a été arrêté."
+            details = _diagnose((exc.stderr or exc.stdout).strip())
+            raise PipelineError("\n".join(part for part in (failure_message, reason, details) if part)) from exc
         if result.returncode != 0:
             details = (result.stderr or result.stdout).strip()[-1200:]
-            raise PipelineError(f"{failure_message}\n{details}".strip())
+            hint = _diagnose(details)
+            raise PipelineError("\n".join(part for part in (failure_message, hint, details) if part))
         return result.stdout.strip()
 
     def _existing_audio(self, source_dir: Path) -> Path | None:
@@ -456,6 +542,9 @@ class TranscriptionPipeline:
                 url,
             ],
             "Le téléchargement audio a échoué.",
+            timeout=DOWNLOAD_MAX_SECONDS,
+            watch=source_dir,
+            idle_timeout=DOWNLOAD_IDLE_SECONDS,
         )
         candidates = [Path(line.strip()) for line in output.splitlines() if line.strip()]
         audio_path = next(
@@ -545,6 +634,9 @@ class TranscriptionPipeline:
                 str(chunks_dir / "chunk_%03d.mp3"),
             ],
             "La préparation audio avec FFmpeg a échoué.",
+            timeout=FFMPEG_MAX_SECONDS,
+            watch=chunks_dir,
+            idle_timeout=FFMPEG_IDLE_SECONDS,
         )
         chunks = sorted(chunks_dir.glob("chunk_*.mp3"))
         self._validate_chunk_sizes(chunks)
@@ -596,6 +688,9 @@ class TranscriptionPipeline:
                     str(target),
                 ],
                 "La préparation audio avec FFmpeg a échoué.",
+                timeout=FFMPEG_CHUNK_MAX_SECONDS,
+                watch=chunks_dir,
+                idle_timeout=FFMPEG_IDLE_SECONDS,
             )
             chunks.append(target)
         self._validate_chunk_sizes(chunks)
@@ -641,6 +736,7 @@ class TranscriptionPipeline:
                 str(audio_path),
             ],
             "Impossible de mesurer une partie audio.",
+            timeout=FFPROBE_MAX_SECONDS,
         )
         try:
             duration = float(output.splitlines()[-1])
@@ -731,11 +827,21 @@ class TranscriptionPipeline:
         offset: float,
         chunk_duration: float,
         checkpoint_path: Path,
+        stop: threading.Event | None = None,
     ) -> dict[str, Any]:
         """Transcribe one chunk and persist it before reporting success."""
+        if stop is not None and stop.is_set():
+            raise RunAborted("arrêt demandé")
         client = OpenAI(api_key=api_key, max_retries=5, timeout=900)
         started = time.monotonic()
-        chunk_segments = self._transcribe_chunk(client, chunk, chunk_index, diarize, language)
+        try:
+            chunk_segments = self._transcribe_chunk(client, chunk, chunk_index, diarize, language)
+        except Exception as exc:
+            # Signalé depuis le thread même : la partie suivante ne doit pas partir avant que
+            # le thread principal ait traité l'échec.
+            if stop is not None and classify_api_error(exc)[1]:
+                stop.set()
+            raise
         elapsed = max(0.0, time.monotonic() - started)
         absolute_segments: list[dict[str, Any]] = []
         for segment in chunk_segments:

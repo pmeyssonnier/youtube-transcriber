@@ -8,7 +8,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.pipeline import PipelineError, TranscriptionPipeline
+import httpx
+import openai
+
+from app.pipeline import PipelineError, TranscriptionPipeline, classify_api_error
 from app.store import JobStore
 
 
@@ -224,6 +227,107 @@ class LanguageTests(unittest.TestCase):
             self.assertIsNone(pipeline._load_chunk_result(results, 0, "modele", "nl"))
             self.assertIsNone(pipeline._load_chunk_result(results, 0, "modele"))
             pipeline.shutdown()
+
+
+def api_error(kind, status: int, message: str = "erreur", body=None):
+    request = httpx.Request("POST", "https://api.openai.com/v1/audio/transcriptions")
+    response = httpx.Response(status, request=request)
+    return kind(message, response=response, body=body)
+
+
+class ApiErrorTests(unittest.TestCase):
+    """Une erreur qui se répétera à chaque partie arrête les appels payants (audit P2-09)."""
+
+    def test_classification(self) -> None:
+        quota = api_error(openai.RateLimitError, 429, "You exceeded your current quota", {"code": "insufficient_quota"})
+        self.assertEqual(classify_api_error(api_error(openai.AuthenticationError, 401))[1], True)
+        self.assertEqual(classify_api_error(api_error(openai.PermissionDeniedError, 403))[1], True)
+        self.assertEqual(classify_api_error(api_error(openai.NotFoundError, 404))[1], True)
+        self.assertEqual(classify_api_error(quota)[1], True)
+        self.assertEqual(classify_api_error(api_error(openai.RateLimitError, 429, "Rate limit reached"))[1], False)
+        self.assertEqual(classify_api_error(api_error(openai.InternalServerError, 500))[1], False)
+        self.assertEqual(classify_api_error(openai.APIConnectionError(request=httpx.Request("POST", "https://x")))[1], False)
+        self.assertIn("clé", classify_api_error(api_error(openai.AuthenticationError, 401))[0])
+        self.assertIn("quota", classify_api_error(quota)[0])
+
+    def run_job(self, chunk_count: int, concurrency: int, failing, calls: list[int]):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jobs_dir = root / "jobs"
+            jobs_dir.mkdir()
+            audio = root / "source.m4a"
+            audio.write_bytes(b"audio")
+            chunks = []
+            for index in range(chunk_count):
+                chunk = root / f"chunk_{index:03d}.mp3"
+                chunk.write_bytes(b"c")
+                chunks.append(chunk)
+            with (
+                patch("app.store.JOBS_DIR", jobs_dir),
+                patch("app.pipeline.JOBS_DIR", jobs_dir),
+                patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key-for-unit-tests-only"}),
+            ):
+                store = JobStore()
+                job_id = "c" * 32
+                PipelineTests._make_job(self, store, job_id, api_concurrency=concurrency)
+                pipeline = TranscriptionPipeline(store)
+
+                def transcribe(_client, _chunk, index, _diarize, _language=None):
+                    calls.append(index)
+                    time.sleep(0.05)
+                    error = failing(index)
+                    if error:
+                        raise error
+                    return [{"start": 0.0, "end": 0.8, "speaker": "P01-A", "text": f"p{index}", "chunk_index": index}]
+
+                with (
+                    patch.object(pipeline, "_existing_audio", return_value=audio),
+                    patch.object(pipeline, "_split_audio", return_value=chunks),
+                    patch.object(pipeline, "_duration", return_value=1.0),
+                    patch.object(pipeline, "_transcribe_chunk", side_effect=transcribe),
+                    patch("app.pipeline.OpenAI", return_value=object()),
+                ):
+                    try:
+                        pipeline._run(job_id)
+                        error = None
+                    except PipelineError as exc:
+                        error = exc
+                saved = len(list((jobs_dir / job_id / "chunk-results").glob("chunk_*.json")))
+                pipeline.shutdown()
+                return error, saved
+
+    def test_rejected_key_stops_after_the_calls_already_in_flight(self) -> None:
+        calls: list[int] = []
+        error, saved = self.run_job(20, 2, lambda index: api_error(openai.AuthenticationError, 401), calls)
+        self.assertIsNotNone(error)
+        self.assertIn("clé API", str(error))
+        self.assertLessEqual(len(calls), 4, calls)  # 2 appels en cours, pas les 18 autres
+
+    def test_exhausted_quota_keeps_what_was_already_paid_for(self) -> None:
+        calls: list[int] = []
+        quota = lambda index: (  # noqa: E731
+            api_error(openai.RateLimitError, 429, "quota", {"code": "insufficient_quota"}) if index >= 3 else None
+        )
+        error, saved = self.run_job(12, 1, quota, calls)
+        self.assertIn("quota", str(error))
+        self.assertEqual(saved, 3)
+        self.assertEqual(calls, [0, 1, 2, 3])
+        self.assertIn("3 partie(s) sur 12", str(error))
+
+    def test_one_transient_failure_does_not_stop_the_other_chunks(self) -> None:
+        calls: list[int] = []
+        flaky = lambda index: api_error(openai.InternalServerError, 500, "panne") if index == 2 else None  # noqa: E731
+        error, saved = self.run_job(8, 2, flaky, calls)
+        self.assertIsNotNone(error)
+        self.assertEqual(saved, 7)  # les 7 autres parties sont sauvegardées, seule la 3e sera refaite
+        self.assertEqual(sorted(calls), list(range(8)))
+
+    def test_repeated_transient_failures_stop_the_run(self) -> None:
+        calls: list[int] = []
+        down = lambda index: api_error(openai.InternalServerError, 500, "panne")  # noqa: E731
+        error, saved = self.run_job(20, 1, down, calls)
+        self.assertIsNotNone(error)
+        self.assertLessEqual(len(calls), 4, calls)
 
 
 class CheckpointValidationTests(unittest.TestCase):

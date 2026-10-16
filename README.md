@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.10.1**
+**Version : 1.10.2**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.10.1)`.
+4. Attendez `Installation terminee (version 1.10.2)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -257,6 +257,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.10.2** : correctifs de l'audit du 16/10/2026 (points P1-02, P2-08, P2-09). Le téléchargement et FFmpeg sont surveillés : arrêt (avec leurs processus enfants) si aucun fichier ne grossit pendant 10 min (téléchargement) ou 5 min (FFmpeg), ou au bout de 4 h / 2 h, avec un message clair (disque plein, réseau, connexion YouTube demandée…) ; « Relancer » reprend sans refaire ce qui est déjà là. Une erreur OpenAI qui se répétera à chaque partie (clé refusée, accès refusé, modèle introuvable, quota épuisé) arrête immédiatement les nouveaux appels payants et l'explique ; un échec isolé (réseau, serveur) n'arrête plus les autres parties, qui sont sauvegardées, et trois échecs passagers arrêtent le traitement. Les cinq exports sont écrits en fichiers temporaires puis mis en place ensemble : une panne en cours d'écriture ne mélange plus anciens et nouveaux fichiers ;
 - **1.10.1** : correctifs de l'audit du 16/10/2026 (point P1-01 et P2-04). À la jonction de deux parties, une phrase qui traverse la coupure n'est plus perdue (un cas de test perdait 20 s de parole ; sur 300 jonctions simulées la perte moyenne passe de 5,8 s à 0,06 s) ni répétée : les segments sont attribués à la partie qui en contient le plus, les passages non couverts sont remis, les doublons retirés, et les cas indécidables sont marqués `stitch_uncertain` dans le JSON. Un résultat sauvegardé n'est réutilisé que si ses segments sont valides et correspondent à la partie audio attendue ; sinon seule cette partie est refaite ;
 - **1.10.0** : option « Langue parlée » (français par défaut), transmise à OpenAI pour les deux modèles ; sans langue, la séance du 10/09/2025 du Conseil communal de Schaerbeek était transcrite à 38 % en anglais. Une partie déjà transcrite dans une autre langue est refaite à la reprise ; les traitements créés avant cette version gardent la détection automatique. Champ `language` de `POST /api/jobs` (code ISO 639-1, `null` pour la détection automatique) ;
 - **1.9.2** : les titres « l'échevin(e) » déformés (« Léchine », « Leschvin »…) ne sont plus comptés comme des noms inconnus, les noms de groupes et sigles (« pour le groupe PTB ») sont ignorés, « vous avez la parole Madame X » est compris sans virgule ;
