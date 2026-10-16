@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "transcription.json (youtube-transcriber)",
+  "description": "Fichier structuré exporté pour chaque transcription. Version 1.x : des champs peuvent être ajoutés, aucun champ existant ne change de sens.",
+  "type": "object",
+  "required": ["schema_version", "generator", "metadata", "speakers", "segments"],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^1\\.[0-9]+$"},
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "generated_at"],
+      "properties": {"name": {"type": "string"}, "version": {"type": "string"}, "generated_at": {"type": "string"}}
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["title", "source_url", "video_id", "duration_seconds", "model", "language", "diarized",
+                   "session_date", "publication_date", "reference_date_used", "reference_date_source",
+                   "stitch_uncertain_segments"],
+      "properties": {
+        "title": {"type": ["string", "null"]},
+        "source_url": {"type": ["string", "null"]},
+        "video_id": {"type": ["string", "null"]},
+        "duration_seconds": {"type": ["number", "null"]},
+        "transcribed_from": {"type": ["number", "null"]},
+        "transcribed_to": {"type": ["number", "null"]},
+        "model": {"type": ["string", "null"]},
+        "language": {"type": ["string", "null"]},
+        "diarized": {"type": "boolean"},
+        "speaker_linking": {"enum": ["off", "light", "strong"]},
+        "speaker_labels_need_review": {"type": "boolean"},
+        "session_date": {"type": ["string", "null"], "description": "Date de la séance saisie par l'utilisateur (AAAA-MM-JJ)."},
+        "publication_date": {"type": ["string", "null"], "description": "Date de publication de la vidéo selon YouTube."},
+        "reference_date_used": {"type": ["string", "null"], "description": "Date utilisée pour choisir les élus en exercice."},
+        "reference_date_source": {"enum": ["saisie", "publication_youtube", "inconnue"]},
+        "stitch_uncertain_segments": {"type": "integer", "minimum": 0}
+      }
+    },
+    "speakers": {"type": "object", "additionalProperties": {"type": "string"}, "description": "identifiant de voix (speaker_id) -> nom donné par l'utilisateur"},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "start", "end", "text", "speaker", "speaker_id", "speaker_name"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 1, "description": "Numéro d'ordre du segment, stable tant que la transcription n'est pas refaite."},
+          "start": {"type": "number", "minimum": 0},
+          "end": {"type": "number", "minimum": 0},
+          "text": {"type": "string", "description": "Texte brut renvoyé par le modèle, jamais modifié."},
+          "text_normalized": {"type": "string", "description": "Texte avec les noms corrigés (analyse des noms cités, à la demande)."},
+          "mentions": {"type": "array", "description": "Noms cités et leur niveau de confiance (analyse des noms cités, à la demande)."},
+          "speaker": {"type": "string", "description": "Identifiant de voix (idem speaker_id, conservé pour compatibilité)."},
+          "speaker_id": {"type": "string", "description": "Identifiant de voix stable : ne change pas quand on renomme."},
+          "speaker_name": {"type": "string", "description": "Nom affiché (celui saisi par l'utilisateur, sinon l'identifiant)."},
+          "raw_speaker": {"type": "string", "description": "Étiquette d'origine de la partie audio, si les voix ont été reliées."},
+          "chunk_index": {"type": "integer", "minimum": 0},
+          "stitch_uncertain": {"type": "boolean", "description": "Passage à la jonction de deux parties à vérifier à la main."}
+        }
+      }
+    }
+  }
+}

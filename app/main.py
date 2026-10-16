@@ -6,7 +6,6 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -15,20 +14,27 @@ from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .config import STATIC_DIR, dependency_status, get_openai_api_key, initialize_directories, save_openai_api_key
+from .config import (
+    DATA_DIR,
+    STATIC_DIR,
+    dependency_status,
+    get_openai_api_key,
+    initialize_directories,
+    save_openai_api_key,
+    synced_folder_name,
+)
 from .constants import (
     ACTIVE_JOB_STATUSES,
     DIARIZATION_MAX_CHUNK_MINUTES,
     APP_NAME,
     APP_VERSION,
     DEFAULT_LANGUAGE,
-    DIARIZATION_MODEL,
     INSPECTION_TTL_SECONDS,
     LONG_VIDEO_SECONDS,
-    STANDARD_MODEL,
     TERMINAL_JOB_STATUSES,
 )
-from .dates import date_metadata, reference_date, SOURCE_LABELS
+from .contract import job_metadata
+from .dates import SOURCE_LABELS, reference_date
 from .exporters import clean_inline_text, safe_filename_stem, write_exports
 from .planning import plan_all_modes
 from .pipeline import PipelineError, TranscriptionPipeline
@@ -160,16 +166,7 @@ def _purge_expired_inspections() -> None:
 
 
 def _output_files(job: dict, speaker_names: dict[str, str]) -> list[dict[str, str]]:
-    metadata = {
-        "title": job.get("title"),
-        "source_url": job.get("url"),
-        "duration_seconds": job.get("duration"),
-        "transcribed_from": job.get("start_seconds"),
-        "transcribed_to": job.get("end_seconds"),
-        "model": DIARIZATION_MODEL if job.get("diarize") else STANDARD_MODEL,
-        "speaker_labels_need_review": bool(job.get("diarize")),
-        **date_metadata(job),
-    }
+    metadata = job_metadata(job, duration=job.get("duration"))
     files = write_exports(Path(job["output_dir"]), metadata, job.get("segments", []), speaker_names)
     if job.get("names_analysis"):
         files.append(write_names_csv(Path(job["output_dir"]), job["names_analysis"]))
@@ -193,14 +190,35 @@ app = FastAPI(title="Transcripteur vidéo local", version=APP_VERSION, lifespan=
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
 
 
+def own_origin(request: Request) -> str:
+    """The origin the browser used to reach this server (scheme, host AND port)."""
+    return f"{request.url.scheme}://{request.headers.get('host', '')}".lower()
+
+
+def refuse_request(request: Request) -> str | None:
+    """Reason for refusing a state-changing request, or None when it comes from our own page.
+
+    - ``Origin`` must be exactly this server's origin: another port on localhost is another site.
+    - ``Sec-Fetch-Site`` may only be ``same-origin`` or ``none`` (``same-site`` also covers another
+      port on the same machine, ``cross-site`` any other website).
+    - A request carrying neither header does not come from a browser page (scripts, curl): a
+      cross-site attack always sends at least one of them, so it is accepted.
+    """
+    origin = request.headers.get("origin")
+    if origin is not None and origin.lower().rstrip("/") != own_origin(request):
+        return "Origine de requête refusée."
+    fetch_site = request.headers.get("sec-fetch-site", "").lower()
+    if fetch_site and fetch_site not in {"same-origin", "none"}:
+        return "Requête externe refusée."
+    return None
+
+
 @app.middleware("http")
 async def local_security(request: Request, call_next):
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
-        origin = request.headers.get("origin")
-        if origin and (urlparse(origin).hostname or "").lower() not in {"127.0.0.1", "localhost"}:
-            return JSONResponse(status_code=403, content={"detail": "Origine de requête refusée."})
-        if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
-            return JSONResponse(status_code=403, content={"detail": "Requête externe refusée."})
+        reason = refuse_request(request)
+        if reason:
+            return JSONResponse(status_code=403, content={"detail": reason})
 
     response = await call_next(request)
     response.headers["Content-Security-Policy"] = (
@@ -225,6 +243,8 @@ def health() -> dict:
         "dependencies": dependencies,
         "ytdlp_version": ytdlp_version(),
         "api_key_configured": get_openai_api_key() is not None,
+        "sync_folder": synced_folder_name(),
+        "data_dir": str(DATA_DIR),
     }
 
 

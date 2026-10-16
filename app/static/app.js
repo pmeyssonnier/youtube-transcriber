@@ -465,6 +465,14 @@ async function loadHealth() {
     const health = document.querySelector("#health");
     try {
         const data = await api("/api/health");
+        const syncNotice = document.querySelector("#syncNotice");
+        if (data.sync_folder) {
+            syncNotice.textContent = `Les fichiers de l’application sont dans un dossier ${data.sync_folder} : la clé API (.env) et les transcriptions peuvent être copiées dans le cloud. `
+                + "Déplacez l’application hors de ce dossier, ou rangez les données ailleurs avec TRANSCRIBER_DATA_DIR (voir le README).";
+            syncNotice.classList.remove("hidden");
+        } else {
+            syncNotice.classList.add("hidden");
+        }
         const missing = Object.entries(data.dependencies).filter(([, ok]) => !ok).map(([name]) => name);
         if (missing.length) {
             health.textContent = `Manquant : ${missing.join(", ")}`;
