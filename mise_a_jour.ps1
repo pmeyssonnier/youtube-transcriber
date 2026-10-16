@@ -18,7 +18,7 @@ $HealthUrl = 'http://127.0.0.1:8765/api/health'
 $CodeItems = @(
     'app', 'tests', 'README.md', 'LICENSE', 'VERSION', 'requirements.txt', 'constraints.txt',
     'run.py', 'INSTALLER.bat', 'demarrer.bat', 'installer_windows.ps1',
-    'mise_a_jour.ps1', '.env.example', '.gitignore', 'docs'
+    'mise_a_jour.ps1', 'demarrer_maj.ps1', '.env.example', '.gitignore', 'docs'
 )
 
 # Un zip qui ne contient pas tout cela est incomplet : il est refuse avant toute modification.

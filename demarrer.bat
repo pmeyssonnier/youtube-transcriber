@@ -7,20 +7,13 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-rem Dossier clone avec git : mise a jour automatique avant le demarrage.
+rem Dossier clone avec git : mise a jour automatique avant le demarrage, avec retour a la version
+rem precedente si la nouvelle ne s'installe pas ou ne demarre pas (voir demarrer_maj.ps1).
 rem Sans git (copie issue d'un zip), cette partie est ignoree : utilisez METTRE_A_JOUR.bat.
 if exist ".git" (
     where git >nul 2>nul
     if not errorlevel 1 (
-        echo Recuperation de la derniere version depuis GitHub...
-        git pull --ff-only
-        if errorlevel 1 (
-            echo Mise a jour du code impossible ^(modifications locales, reseau...^). Demarrage avec la version actuelle.
-        ) else (
-            echo Verification des composants Python...
-            ".venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check --upgrade -r requirements.txt -c constraints.txt
-            if errorlevel 1 echo Les composants Python n'ont pas pu etre verifies. Demarrage quand meme.
-        )
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0demarrer_maj.ps1"
     )
 )
 

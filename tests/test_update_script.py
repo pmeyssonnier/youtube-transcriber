@@ -82,13 +82,16 @@ class UpdateScriptTests(unittest.TestCase):
         text = (ROOT / "demarrer.bat").read_text(encoding="utf-8")
         self.assertIn('if exist ".git"', text)  # copie issue d'un zip : pas de mise à jour git
         self.assertIn("where git", text)
-        self.assertIn("git pull --ff-only", text)  # jamais de fusion automatique
-        self.assertNotIn("git pull origin", text)  # ne tire pas une autre branche dans la branche courante
-        self.assertIn("-r requirements.txt -c constraints.txt", text)
-        update = text.index("git pull")
-        self.assertLess(update, text.index('"run.py"') if '"run.py"' in text else text.index("run.py"))
-        self.assertIn("Demarrage", text)  # un echec de mise a jour ne bloque pas le demarrage
+        self.assertIn("demarrer_maj.ps1", text)
+        self.assertLess(text.index("demarrer_maj.ps1"), text.index("run.py"))
 
+        script = (ROOT / "demarrer_maj.ps1").read_text(encoding="utf-8")
+        self.assertIn("'pull', '--ff-only'", script)  # jamais de fusion automatique
+        self.assertNotIn("pull origin", script)  # ne tire pas une autre branche dans la branche courante
+        self.assertIn("'reset', '--keep'", script)  # retour en arrière sans perdre les modifications locales
+        self.assertNotIn("--hard', $OldCommit", script)
+        self.assertIn("requirements.txt", script)
+        self.assertTrue(script.rstrip().endswith("exit 0"), "le démarrage ne doit jamais être bloqué")
 
 if __name__ == "__main__":
     unittest.main()

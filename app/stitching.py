@@ -28,6 +28,12 @@ MIN_ZONE_SECONDS = 0.5
 UNCOVERED_MIN_SECONDS = 1.0
 DUPLICATE_MIN_OVERLAP = 0.5
 DUPLICATE_MIN_SIMILARITY = 0.6
+# Un segment écarté dont au moins cette part des mots (de 4 lettres et plus) ne figure dans aucun segment
+# conservé qui le recouvre dit autre chose : le temps est couvert, pas ce qui a été dit (par exemple une
+# interjection entendue par une seule des deux parties). Il est alors remis et signalé. Seuil choisi par
+# simulation : 0,5 recopie trop de phrases déjà présentes mais mal reconnues ; 0,75 ne le fait presque pas.
+WORDS_MIN_SHARE = 0.75
+CONTENT_WORD_MIN_LENGTH = 4
 
 _CHUNK = "_stitch_chunk"
 
@@ -52,6 +58,16 @@ def _covered(start: float, end: float, intervals: list[tuple[float, float]]) -> 
     return total
 
 
+def _words_missing_share(text: Any, neighbours: list[str]) -> float:
+    """Share of the words of ``text`` found in none of the ``neighbours`` texts (0 = all there)."""
+    words = _normalized(text).split()
+    content = [word for word in words if len(word) >= CONTENT_WORD_MIN_LENGTH] or words
+    if not content:
+        return 0.0
+    pool = {word for neighbour in neighbours for word in _normalized(neighbour).split()}
+    return sum(1 for word in content if word not in pool) / len(content)
+
+
 def _rank(segment: dict[str, Any], text: str) -> tuple[float, int]:
     return float(segment["end"]) - float(segment["start"]), len(text)
 
@@ -66,10 +82,12 @@ def _repair_junctions(
        would otherwise be lost.
     2. Segments of two different parts that overlap and read alike are the same sentence heard
        twice: the one covering less time (then less text) is removed.
-    3. Overlapping segments that do not read alike cannot be decided: both are kept and flagged
+    3. A discarded segment whose time is covered but whose words are not (half or more of them appear
+       in no overlapping kept segment) is put back too, and flagged.
+    4. Overlapping segments that do not read alike cannot be decided: both are kept and flagged
        ``stitch_uncertain`` for a manual check.
     """
-    rescued = removed = 0
+    rescued = removed = rescued_words = 0
     flagged: set[int] = set()
 
     for segment in sorted(dropped, key=lambda item: float(item["start"])):
@@ -79,10 +97,17 @@ def _repair_junctions(
             continue
         intervals = [(float(item["start"]), float(item["end"])) for item in kept]
         uncovered = length - _covered(start, end, intervals)
-        if uncovered < UNCOVERED_MIN_SECONDS:
+        if uncovered >= UNCOVERED_MIN_SECONDS:
+            kept.append(segment)
+            rescued += 1
             continue
-        kept.append(segment)
-        rescued += 1
+        # Temps déjà couvert : on vérifie que les mots le sont aussi.
+        neighbours = [str(item.get("text") or "") for item in kept if float(item["start"]) < end and float(item["end"]) > start]
+        if _words_missing_share(segment.get("text"), neighbours) >= WORDS_MIN_SHARE:
+            kept.append(segment)
+            flagged.add(id(segment))
+            rescued += 1
+            rescued_words += 1
 
     kept.sort(key=lambda item: (float(item["start"]), float(item["end"])))
     gone: set[int] = set()
@@ -116,6 +141,7 @@ def _repair_junctions(
             item["stitch_uncertain"] = True
     return result, {
         "rescued": rescued,
+        "rescued_words": rescued_words,
         "duplicates_removed": removed,
         "uncertain": sum(1 for item in result if item.get("stitch_uncertain")),
     }

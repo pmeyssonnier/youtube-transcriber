@@ -646,7 +646,9 @@ async function saveSessionDate() {
             method: "POST",
             body: JSON.stringify({ session_date: document.querySelector("#detailSessionDate").value || null }),
         });
-        message.textContent = "Date de séance enregistrée. Relancez « Analyser les noms cités » pour en tenir compte.";
+        message.textContent = job.names_analysis_stale
+            ? "Date de séance enregistrée. Les noms corrigés calculés avec l’ancienne date ont été retirés des fichiers : cliquez sur « Analyser les noms cités » pour les recalculer."
+            : "Date de séance enregistrée.";
         await loadJobs();
         renderSessionDate(state.jobs.find((item) => item.id === job.id));
     } catch (error) {

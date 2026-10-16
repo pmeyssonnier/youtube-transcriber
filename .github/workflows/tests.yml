@@ -47,7 +47,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          foreach ($file in 'installer_windows.ps1', 'mise_a_jour.ps1') {
+          foreach ($file in 'installer_windows.ps1', 'mise_a_jour.ps1', 'demarrer_maj.ps1') {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
