@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.11.1**
+**Version : 1.11.2**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.11.1)`.
+4. Attendez `Installation terminee (version 1.11.2)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -241,7 +241,7 @@ Limites à connaître :
 
 ## Mettre à jour sans tout réinstaller
 
-**Dossier cloné avec git** : `demarrer.bat` récupère lui-même la dernière version (`git pull --ff-only`) et vérifie les composants Python à chaque démarrage. En cas d'échec (modifications locales, pas de réseau), l'application démarre avec la version actuelle. Le reste de cette section concerne les copies issues d'un zip.
+**Dossier cloné avec git** : `demarrer.bat` récupère lui-même la dernière version (`git pull --ff-only`, via `demarrer_maj.ps1`), installe les composants Python puis vérifie que la nouvelle version démarre. **Si l'installation ou le démarrage échoue, le dépôt revient à la version précédente** (`git reset --keep` : vos modifications locales sont conservées) et l'application démarre avec l'ancienne version. En cas d'échec de la récupération (modifications locales en conflit, pas de réseau), elle démarre aussi avec la version actuelle : le démarrage n'est jamais bloqué. Le reste de cette section concerne les copies issues d'un zip.
 
 1. Fermez la fenêtre noire de l'application.
 2. Double-cliquez sur `METTRE_A_JOUR.bat` : il télécharge la dernière version depuis GitHub, sauvegarde l'ancien code dans `.sauvegarde_code\` et remplace le code.
@@ -265,6 +265,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.11.2** : vérification du 17/10/2026 (réserves R1, R2, R3, R5, R6). Une phrase entendue par une seule des deux parties audio à la jonction (une interjection) n'est plus perdue parce que le temps était déjà couvert : elle est remise et marquée `stitch_uncertain` quand au moins 75 % de ses mots (4 lettres et plus) ne figurent dans aucun segment conservé ; le seuil a été choisi par simulation avec des erreurs de reconnaissance (à 12 % d'erreurs : environ 0,1 mot recopié par jonction). Les cinq exports sont remis dans leur état précédent si un remplacement échoue (fichier ouvert dans un autre programme, disque plein) au lieu de laisser un mélange d'anciens et de nouveaux fichiers. Les points de sauvegarde enregistrent le SHA-256 du morceau audio et ne sont réutilisés que pour les mêmes octets (les anciens, sans empreinte, restent acceptés). Changer la date de séance d'un traitement retire du JSON, du traitement et du dossier `outputs` les noms corrigés calculés avec l'ancienne date (`mentions`, `text_normalized`, `noms_cites.csv`), le texte d'origine restant intact, et marque `names_analysis_stale` jusqu'à une nouvelle analyse. La mise à jour automatique d'un clone git (`demarrer.bat`) revient à la version précédente si les composants Python ne s'installent pas ou si la nouvelle version ne démarre pas ;
 - **1.11.1** : correctif de l'audit du 16/10/2026 (point P1-03) : la mise à jour Windows (`METTRE_A_JOUR.bat`) n'est plus destructive. Zip incomplet, illisible ou au code invalide refusé avant toute modification ; nouveau code préparé à côté puis mis en place par renommages ; vérification que la nouvelle version démarre ; restauration automatique de l'ancien code (et des anciens composants Python) au moindre échec, ou au lancement suivant si le script a été interrompu ; journal `.sauvegarde_code\mise_a_jour.log`. Les scénarios (succès, zip incomplet/corrompu/invalide, échec au milieu du remplacement, échec de `pip`, version qui ne démarre pas, mise à jour interrompue) sont testés avec PowerShell 7 et, sous Windows, Windows PowerShell 5.1 ;
 - **1.11.0** : correctifs de l'audit du 16/10/2026 (points P2-10, P2-11, P3-14). Les actions de l'interface exigent maintenant l'origine exacte du serveur (port compris) et refusent `Sec-Fetch-Site: same-site` : une page sur un autre port de `localhost` ne peut plus agir. Avertissement si l'application ou ses données sont dans un dossier OneDrive, Dropbox, Google Drive, iCloud…, et variable `TRANSCRIBER_DATA_DIR` pour ranger les données ailleurs. Le JSON exporté est versionné (`schema_version` = `1.0`, bloc `generator`), chaque segment a un `id` et un `speaker_id` stables, les métadonnées contiennent `video_id`, `language`, `diarized` ; format documenté dans `docs/format-json.md` avec son schéma, et vérifié par les tests. Tous les champs existants sont conservés. Correction d'un oubli des versions 1.10.1 à 1.10.3 : le fichier `VERSION` (lu par la mise à jour) n'avait pas suivi ; un test vérifie maintenant qu'il correspond à `APP_VERSION` ;
 - **1.10.3** : correctifs de l'audit du 16/10/2026 (points P2-05, P2-06, P2-07, P3-12, P3-13). Les surcoûts du recouvrement (« +4 % », « +15 % » étaient faux avec des parties de 10 minutes) et le nombre de parties sont calculés par le serveur d'après la vraie découpe, la plage choisie et le plafond de 1 300 s par requête (`POST /api/plan`, champ `plans` de l'analyse). Nouvelle **date de la séance** (facultative, modifiable après coup) : elle sert à choisir les élus en exercice à la place de la date de publication YouTube, utile pour une rediffusion ; les deux dates sont dans les métadonnées du JSON (`session_date`, `publication_date`, `reference_date_source`), et sans aucune date l'avertissement indique que l'année en cours est utilisée. Le numéro de la partie en cours ne recule plus, la durée d'« Étape » compte depuis le début réel de l'étape, l'estimation du temps restant est signalée comme très approximative avant 3 parties et « indisponible » pour le téléchargement et la préparation. Une durée absente s'affiche « Durée inconnue » (et non « 0 min 00 s »), les messages d'erreur apparaissent dans la page au lieu de fenêtres bloquantes, et le README et `constraints.txt` ne contredisent plus le code (un test vérifie la cohérence de la version) ;

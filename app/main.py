@@ -145,6 +145,7 @@ def job_summary(job: dict) -> dict:
         "completed_at",
         "video_date",
         "session_date",
+        "names_analysis_stale",
         "current_chunk",
         "chunk_count",
         "chunks_completed",
@@ -518,7 +519,9 @@ def analyze_job_names(job_id: str) -> dict:
     analysis["stats"]["date_note"] = SOURCE_LABELS[source]
     job = {**job, "segments": segments, "names_analysis": analysis}
     files = _output_files(job, job.get("speaker_names", {}))
-    store.update(job_id, segments=segments, names_analysis=analysis, files=files, message="Noms cités analysés.")
+    store.update(
+        job_id, segments=segments, names_analysis=analysis, names_analysis_stale=False, files=files, message="Noms cités analysés."
+    )
     return {"stats": analysis["stats"], "files": files}
 
 
@@ -531,9 +534,26 @@ def set_session_date(job_id: str, request: SessionDateRequest) -> dict:
     if job.get("status") != "completed":
         raise HTTPException(status_code=409, detail="La transcription n'est pas encore terminée.")
     session_date = _valid_session_date(request.session_date)
+    before, _ = reference_date(job)
     job = {**job, "session_date": session_date}
-    files = _output_files(job, job.get("speaker_names", {}))
-    return job_summary(store.update(job_id, session_date=session_date, files=files, message="Date de séance mise à jour."))
+    after, _ = reference_date(job)
+    changes = {"session_date": session_date, "message": "Date de séance mise à jour."}
+
+    # Les noms corrigés dépendent de la date (élus en exercice) : si la date de référence change, les
+    # corrections calculées avec l'ancienne ne doivent plus se trouver dans les fichiers. Le texte
+    # d'origine (« text ») n'est jamais touché ; l'analyse se relance d'un clic.
+    segments = job.get("segments", [])
+    analysed = bool(job.get("names_analysis")) or any("mentions" in item or "text_normalized" in item for item in segments)
+    if analysed and before != after:
+        segments = [{key: value for key, value in item.items() if key not in {"mentions", "text_normalized"}} for item in segments]
+        job = {**job, "segments": segments}
+        job.pop("names_analysis", None)
+        (Path(job["output_dir"]) / "noms_cites.csv").unlink(missing_ok=True)
+        changes.update(segments=segments, names_analysis=None, names_analysis_stale=True)
+        changes["message"] = "Date de séance mise à jour ; les noms cités doivent être analysés à nouveau."
+    files = [item for item in _output_files(job, job.get("speaker_names", {})) if item["name"] != "noms_cites.csv" or job.get("names_analysis")]
+    changes["files"] = files
+    return job_summary(store.update(job_id, **changes))
 
 
 @app.post("/api/jobs/{job_id}/speakers")

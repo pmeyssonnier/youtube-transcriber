@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -127,19 +128,50 @@ def write_exports(
 def write_files_together(directory: Path, contents: dict[str, str]) -> None:
     """Write several files so that a failure never leaves a mix of old and new versions.
 
-    Everything is first written to temporary files next to the final ones (an error here changes
-    nothing); only then are the files swapped into place, one atomic replacement each.
+    1. Everything is first written to temporary files next to the final ones (an error here changes
+       nothing).
+    2. Each existing file is copied to a backup, then replaced atomically by its new version.
+    3. If a replacement fails (a file open in another program, a full disk...), the files already
+       replaced are put back from their backups, so the previous set is complete again.
+
+    Only a power cut in the middle of step 2 can still leave a mix (the leftover ``.bak`` files
+    are then the previous versions).
     """
     directory.mkdir(parents=True, exist_ok=True)
     temporary: dict[str, Path] = {}
+    backups: dict[str, Path | None] = {}  # name -> backup of the previous version (None: it did not exist)
+    replaced: list[str] = []
+    restore_failed = False
     try:
         for name, content in contents.items():
             path = directory / f".{name}.tmp"
             path.write_text(content, encoding="utf-8")
             temporary[name] = path
-        for name, path in list(temporary.items()):
-            path.replace(directory / name)
-            del temporary[name]
+        for name in contents:
+            final = directory / name
+            if final.exists():
+                backup = directory / f".{name}.bak"
+                shutil.copy2(final, backup)
+                backups[name] = backup
+            else:
+                backups[name] = None
+            temporary[name].replace(final)
+            replaced.append(name)
+    except BaseException:
+        for name in reversed(replaced):
+            try:
+                backup = backups.get(name)
+                if backup is not None:
+                    backup.replace(directory / name)
+                else:
+                    (directory / name).unlink(missing_ok=True)
+            except OSError:
+                restore_failed = True  # la sauvegarde .bak reste à côté en dernier recours
+        raise
     finally:
         for path in temporary.values():
             path.unlink(missing_ok=True)
+        if not restore_failed:
+            for backup in backups.values():
+                if backup is not None:
+                    backup.unlink(missing_ok=True)

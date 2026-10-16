@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -67,6 +68,14 @@ def _diagnose(details: str) -> str:
 
 def _minutes(seconds: float) -> str:
     return f"{max(1, round(seconds / 60))} min" if seconds >= 90 else f"{round(seconds)} s"
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 class PipelineError(RuntimeError):
@@ -290,7 +299,9 @@ class TranscriptionPipeline:
         checkpoints = {
             index: checkpoint
             for index, checkpoint in (
-                (index, self._load_chunk_result(results_dir, index, model, language, (offsets[index], chunk_durations[index])))
+                (index, self._load_chunk_result(
+                    results_dir, index, model, language, (offsets[index], chunk_durations[index]), chunks[index]
+                ))
                 for index in range(len(chunks))
             )
             if checkpoint is not None
@@ -737,11 +748,14 @@ class TranscriptionPipeline:
         model: str,
         language: str | None = None,
         window: tuple[float, float] | None = None,
+        chunk_path: Path | None = None,
     ) -> dict[str, Any] | None:
         """Return a saved chunk result only if it is usable; otherwise that chunk alone is redone.
 
         ``window`` is the (offset, duration) the chunk must have now: a result saved for another
         cut of the audio, or whose segments are malformed or fall outside the chunk, is rejected.
+        ``chunk_path`` is the audio file now on disk: a result saved for different bytes (SHA-256
+        recorded with the result) is rejected. Results saved before 1.11.2 have no hash and are kept.
         """
         data = self._read_json(self._chunk_result_path(results_dir, index))
         if not data:
@@ -760,6 +774,13 @@ class TranscriptionPipeline:
             return None
         if not self._segments_valid(data, window):
             return None
+        expected_hash = data.get("chunk_sha256")
+        if expected_hash and chunk_path is not None:
+            try:
+                if file_sha256(chunk_path) != expected_hash:
+                    return None
+            except OSError:
+                return None
         return data
 
     @staticmethod
@@ -835,6 +856,7 @@ class TranscriptionPipeline:
             "language": language,
             "duration": chunk_duration,
             "offset": offset,
+            "chunk_sha256": file_sha256(chunk),
             "processing_seconds": elapsed,
             "segments": absolute_segments,
         }
