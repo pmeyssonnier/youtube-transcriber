@@ -397,21 +397,29 @@ def analyze_names(
     return {"summary": summary, "unknown": unknown_rows, "stats": stats}
 
 
+def _csv_safe(value: Any) -> Any:
+    """Neutralise a text cell that Excel would run as a formula (starts with =, +, -, @, tab or return)."""
+    if isinstance(value, str) and value[:1] in {"=", "+", "-", "@", "\t", "\r"}:
+        return "'" + value
+    return value
+
+
 def names_csv(analysis: dict[str, Any]) -> str:
     """Spreadsheet-friendly list of the names cited (semicolon separated, UTF-8 with BOM)."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";")
-    writer.writerow(["nom_reconnu", "fonction", "occurrences", "corrigees_automatiquement", "a_verifier", "variantes_entendues", "premieres_heures", "remarque"])
+    write_row = lambda row: writer.writerow([_csv_safe(cell) for cell in row])  # noqa: E731
+    write_row(["nom_reconnu", "fonction", "occurrences", "corrigees_automatiquement", "a_verifier", "variantes_entendues", "premieres_heures", "remarque"])
     for row in analysis.get("summary", []):
-        writer.writerow([
+        write_row([
             row["nom"], row.get("fonction") or "", row["occurrences"], row["niveaux"].get("auto", 0), row["niveaux"].get("verifier", 0),
             " | ".join(f"{name} ({count})" for name, count in row["variantes"].items()), " ".join(row["heures"]),
             "ancien élu : mandat terminé à la date de la séance" if row.get("ancien_elu") else "",
         ])
-    writer.writerow([])
-    writer.writerow(["nom_non_reconnu", "", "occurrences"])
+    write_row([])
+    write_row(["nom_non_reconnu", "", "occurrences"])
     for row in analysis.get("unknown", []):
-        writer.writerow([row["nom"], "", row["occurrences"]])
+        write_row([row["nom"], "", row["occurrences"]])
     return "﻿" + buffer.getvalue()
 
 
