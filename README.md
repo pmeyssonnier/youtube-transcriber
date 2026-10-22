@@ -8,7 +8,7 @@ Pensée pour les longues retransmissions (par exemple un conseil communal de plu
 
 **Mots-clés** : `youtube`, `transcription`, `diarisation`, `openai`, `whisper`, `fastapi`, `yt-dlp`, `sous-titres`, `srt`, `windows`.
 
-**Version : 1.12.0**
+**Version : 1.12.1**
 
 [![Tests](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml/badge.svg)](https://github.com/pmeyssonnier/youtube-transcriber/actions/workflows/tests.yml)
 
@@ -56,7 +56,7 @@ Prérequis : Windows 10 ou 11, connexion Internet et, si une dépendance manque,
 1. Décompressez complètement le ZIP dans un dossier durable, par exemple `Documents\youtube-transcriber`.
 2. Fermez toute ancienne instance de l’application.
 3. Double-cliquez sur `INSTALLER.bat`.
-4. Attendez `Installation terminee (version 1.12.0)`.
+4. Attendez `Installation terminee (version 1.12.1)`.
 5. Double-cliquez sur `demarrer.bat`.
 
 L’installateur cherche un Python 3.11 ou plus récent, installe Python 3.12 si nécessaire, puis FFmpeg, Deno et les dépendances Python. Il actualise aussi le `PATH` de la fenêtre en cours. Si Windows ne voit pas encore une commande fraîchement installée, fermez la fenêtre et relancez `INSTALLER.bat`.
@@ -267,6 +267,7 @@ L'utilisation de l'API OpenAI est soumise aux conditions d'OpenAI, et le téléc
 
 ## Historique
 
+- **1.12.1** : correctifs de sécurité (revue du 22/10/2026). Un lien contenant `\`, un espace, des identifiants (`utilisateur@`) ou un port est refusé : `https://evil.com\@www.youtube.com/...` passait pour un lien YouTube alors que d'autres outils y lisent un autre serveur. Le fragment `#...` du lien est retiré avant d'être transmis à yt-dlp. Dans `noms_cites.csv`, une cellule commençant par `=`, `+`, `-` ou `@` est neutralisée (injection de formule dans Excel) ;
 - **1.12.0** : la clé API n'est plus rangée dans le dossier de l'application (réserve R4 de la vérification du 17/10/2026). Elle est enregistrée dans `%LOCALAPPDATA%\youtube-transcriber\.env`, un dossier que OneDrive et les services semblables ne synchronisent pas. Une clé déjà présente dans l'ancien `.env` est migrée automatiquement au démarrage (copie, relecture de contrôle, puis retrait de l'ancien fichier ; rien n'est supprimé si la copie échoue). Les paramètres affichent l'emplacement, la page prévient si la clé se trouve dans un dossier synchronisé, et un message unique signale la migration en conseillant de créer une nouvelle clé si l'ancienne copie a pu être synchronisée. Variable `TRANSCRIBER_ENV_FILE` pour un autre emplacement ;
 - **1.11.2** : vérification du 17/10/2026 (réserves R1, R2, R3, R5, R6). Une phrase entendue par une seule des deux parties audio à la jonction (une interjection) n'est plus perdue parce que le temps était déjà couvert : elle est remise et marquée `stitch_uncertain` quand au moins 75 % de ses mots (4 lettres et plus) ne figurent dans aucun segment conservé ; le seuil a été choisi par simulation avec des erreurs de reconnaissance (à 12 % d'erreurs : environ 0,1 mot recopié par jonction). Les cinq exports sont remis dans leur état précédent si un remplacement échoue (fichier ouvert dans un autre programme, disque plein) au lieu de laisser un mélange d'anciens et de nouveaux fichiers. Les points de sauvegarde enregistrent le SHA-256 du morceau audio et ne sont réutilisés que pour les mêmes octets (les anciens, sans empreinte, restent acceptés). Changer la date de séance d'un traitement retire du JSON, du traitement et du dossier `outputs` les noms corrigés calculés avec l'ancienne date (`mentions`, `text_normalized`, `noms_cites.csv`), le texte d'origine restant intact, et marque `names_analysis_stale` jusqu'à une nouvelle analyse. La mise à jour automatique d'un clone git (`demarrer.bat`) revient à la version précédente si les composants Python ne s'installent pas ou si la nouvelle version ne démarre pas ;
 - **1.11.1** : correctif de l'audit du 16/10/2026 (point P1-03) : la mise à jour Windows (`METTRE_A_JOUR.bat`) n'est plus destructive. Zip incomplet, illisible ou au code invalide refusé avant toute modification ; nouveau code préparé à côté puis mis en place par renommages ; vérification que la nouvelle version démarre ; restauration automatique de l'ancien code (et des anciens composants Python) au moindre échec, ou au lancement suivant si le script a été interrompu ; journal `.sauvegarde_code\mise_a_jour.log`. Les scénarios (succès, zip incomplet/corrompu/invalide, échec au milieu du remplacement, échec de `pip`, version qui ne démarre pas, mise à jour interrompue) sont testés avec PowerShell 7 et, sous Windows, Windows PowerShell 5.1 ;

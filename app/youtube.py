@@ -11,7 +11,19 @@ VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 def youtube_video_identity(value: str) -> str | None:
     """Extract a YouTube video id from supported single-video URL formats."""
-    parsed = urlparse(value.strip())
+    cleaned = value.strip()
+    # Les « \\ », espaces et caractères de contrôle sont lus autrement par d'autres outils que par Python :
+    # « https://evil.com\\@www.youtube.com/... » a pour hôte youtube.com ici, evil.com ailleurs.
+    if re.search(r"[\\\s\x00-\x1f\x7f]", cleaned):
+        return None
+    parsed = urlparse(cleaned)
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    try:
+        if parsed.port is not None:
+            return None
+    except ValueError:
+        return None
     host = (parsed.hostname or "").lower()
     path_parts = [part for part in parsed.path.split("/") if part]
     video_id = ""
@@ -37,7 +49,7 @@ def validate_youtube_url(value: str) -> str:
             "Indiquez un lien vers une seule vidéo YouTube. "
             "Les playlists, chaînes et pages de recherche ne sont pas acceptées."
         )
-    return cleaned
+    return cleaned.split("#", 1)[0]  # le fragment est inutile ici et yt-dlp y lit des options
 
 
 def validate_cookie_browser(value: str | None) -> str | None:

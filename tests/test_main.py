@@ -29,9 +29,18 @@ class UrlValidationTests(unittest.TestCase):
             "https://www.youtube.com/@openai",
             "https://www.youtube.com/results?search_query=test",
             "https://www.youtube.com/watch?v=too-short",
+            "https://evil.com\\@www.youtube.com/watch?v=euuLzgjj7z4",
+            "https://user@www.youtube.com/watch?v=euuLzgjj7z4",
+            "https://www.youtube.com:8443/watch?v=euuLzgjj7z4",
+            "https://www.youtube.com/watch?v=euuLzgjj7z4 --exec id",
+            "https://www.youtube.com/watch?v=euuLzgjj7z4\n--exec id",
         ):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_youtube_url(value)
+
+    def test_fragment_is_removed(self) -> None:
+        url = "https://www.youtube.com/watch?v=euuLzgjj7z4#__youtubedl_smuggle=%7B%7D"
+        self.assertEqual(validate_youtube_url(url), "https://www.youtube.com/watch?v=euuLzgjj7z4")
 
     def test_cookie_browser_is_allowlisted(self) -> None:
         self.assertEqual(validate_cookie_browser(" Edge "), "edge")
